@@ -1,5 +1,5 @@
 override CFLAGS+=-Werror -Wall -g -fPIC -O2 -DNDEBUG -ftrapv -Wfloat-equal -Wundef -Wwrite-strings -Wconversion -Wuninitialized -pedantic
-PREFIX=/usr/bin
+PREFIX=/usr/bin/
 BUILDDIR=bin/
 LIBS=-ledit
 
@@ -21,12 +21,12 @@ clean:
 
 #Installs into specified(or default) directory
 install:
-	install -d $(PREFIX)/$(TARGET)
-	install $(BUILDDIR)$(TARGET) $(PREFIX)/$(TARGET)
+	install -d $(PREFIX)$(TARGET)
+	install $(BUILDDIR)$(TARGET) $(PREFIX)$(TARGET)
 
 #Uninstalls from specified(or default)directory
 uninstall:
-	rm -rf $(PREFIX)/$(TARGET)
+	rm -rf $(PREFIX)$(TARGET)
 
 #Checks for bad functions
 BADFUNCS='[^_.>a-zA-Z0-9](str(n?cpy|n?cat|xfrm|n?dup|str|pbrk|tok|_)|stpn?cpy|a?sn?printf|byte_)'

@@ -27,7 +27,7 @@ void add_history(char* unused){}
 
 #include "util.h"
 
-#define VERSION "Hiss version 0.0.1\n"
+#define VERSION "Hiss version 0.0.1"
 #define PROMPT "hiss> "
 #define USAGE "Usage: hiss [-hv]\n\tIf the program is called without arguments, \
                the REPL is started.\n\t-h triggers this help message.\n\t\
@@ -48,6 +48,11 @@ static inline void parse_arguments(int argc, char** argv){
 
 static inline void print_header(){
     printf(VERSION);
+#if defined(__GNUC__) || defined(__GNUG__)
+    printf(", compiled with gcc %s\n", __VERSION__);
+#elif defined(__clang__)
+    printf(", compiled with clang %s\n", __clang_version__);
+#endif
     printf("For exiting, press Ctrl-C or type exit/quit\n\n");
 }
 

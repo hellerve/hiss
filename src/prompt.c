@@ -52,6 +52,8 @@ static inline void print_header(){
     printf(", compiled with gcc %s\n", __VERSION__);
 #elif defined(__clang__)
     printf(", compiled with clang %s\n", __clang_version__);
+#elif defined(__ICC)
+    printf(", compiled with icc %s\n", __ICC);
 #endif
     printf("For exiting, press Ctrl-C or type exit/quit\n\n");
 }

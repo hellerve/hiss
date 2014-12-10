@@ -306,12 +306,12 @@ vpc_err *vpca_lang_contents(int flags, const char *filename, ...);
 
 void vpc_print(vpc_parser *p);
 
-int vpcest_pass(vpc_parser *p, const char *s, const void *d,
+int vpc_test_pass(vpc_parser *p, const char *s, const void *d,
   int(*tester)(const void*, const void*), 
   vpc_dtor destructor, 
   void(*printer)(const void*));
 
-int vpcest_fail(vpc_parser *p, const char *s, const void *d,
+int vpc_test_fail(vpc_parser *p, const char *s, const void *d,
   int(*tester)(const void*, const void*),
   vpc_dtor destructor,
   void(*printer)(const void*));

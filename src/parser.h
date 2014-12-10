@@ -24,7 +24,7 @@ typedef struct {
 
 typedef struct {
   vpc_state state;
-  int expected_num;
+  int expected_count;
   char *filename;
   char *failure;
   char **expected;

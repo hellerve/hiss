@@ -1,4 +1,26 @@
-void vpc_err_delete(vpc_err *e);
+#include "parser.h"
+
+/*
+ *  Static functions
+ */
+
+
+/*
+ *  Exported functions
+ */
+
+void mpc_err_delete(vp_err *x) {
+  int i;
+  for (i = 0; i < x->expected_count; i++) {
+    free(x->expected[i]);
+  }
+  
+  free(x->expected);
+  free(x->filename);
+  free(x->failure);
+  free(x);
+}
+
 char *vpc_err_string(vpc_err *e);
 void vpc_err_print(vpc_err *e);
 void vpc_err_printo(vpc_err *e, FILE *f);

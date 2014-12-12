@@ -34,7 +34,7 @@ typedef struct {
 void vpc_err_delete(vpc_err *e);
 char *vpc_err_string(vpc_err *e);
 void vpc_err_print(vpc_err *e);
-void vpc_err_printo(vpc_err *e, FILE *f);
+void vpc_err_fprint(vpc_err *e, FILE *f);
 
 /*
 ** Parsing

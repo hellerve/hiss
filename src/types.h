@@ -9,15 +9,15 @@ enum {HISS_ZERO_DIV, HISS_BAD_OP, HISS_BAD_NUM};
 
 typedef struct {
     int type;
-    long num,
+    long num;
     int err;
 } hiss_num;
 
-hiss_num hiss_num(long n){
+hiss_num hiss_number(long n){
     hiss_num h;
     h.type = HISS_NUM;
     h.num = n;
-    return n;
+    return h;
 }
 
 hiss_num hiss_err(int code){
@@ -45,7 +45,7 @@ void hiss_print(hiss_num num){
 
 
 void hiss_println(hiss_num num){ 
-    hiss_print(num;
+    hiss_print(num);
     putchar('\n');
 }
 

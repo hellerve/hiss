@@ -4,12 +4,42 @@
  *  Static functions
  */
 
+static vpc_err* vpc_err_new(const char* filename, vpc_state s, const char* expected, char recieved){
+    vpc_err* err = malloc(sizeof(vpc_err));
+    err->filename = malloc(strlen(filename) + 1);
+    strcpy(err->filename, filename);
+    err->state = s,
+    err->expected_num = 1;
+    err->expected = malloc(sizeof(char*));
+    er->expected[0] = malloc(strlen(expected) + 1);
+    strcpy(err->expected[0], expected);
+    err->failure = NULL;
+    err->received = received;
+    return err
+}
+
+static vpc_err* vpc_err_fail(const char* filename, vpc_state s, const char* failure){
+    vpc_err* err = malloc(sizeof(vpc_err));
+    err->filename = malloc(strlen(filename) + 1);
+    strcpy(err->filename, filename);
+    err->state = s;
+    err->expected_num = 0;
+    err->expected = NULL;
+    err->failure = malloc(strlen(failure) + 1);
+    strcpy(err->failure, failure);
+    err->recieved = ' ';
+    return err;
+}
 
 /*
  *  Exported functions
  */
 
-void mpc_err_delete(vp_err *x) {
+/*
+ *  Error functions
+ */
+
+void vpc_err_delete(vp_err *x) {
   int i;
   for (i = 0; i < x->expected_count; i++) {
     free(x->expected[i]);

@@ -61,7 +61,7 @@ static inline void print_header(){
     printf("For exiting, press Ctrl-C or type exit/quit\n\n");
 }
 
-char* eval(vp_ast* t){
+char* eval(vpc_ast* t){
     if(strstr(t->tag, "number"))
         return t->contents;
     else
@@ -69,9 +69,9 @@ char* eval(vp_ast* t){
 }
 
 int repl(){
-    vp_parser* num = vp_new("number");
+    vpc_parser* num = vpc_new("number");
 
-    vpa_lang(VPA_LANG_DEFAULT, "number: /-?[0-9]+/ ;", num);
+    vpca_lang(VPCA_LANG_DEFAULT, "number: /-?[0-9]+/ ;", num);
     while(1){
         char* input = readline(PROMPT);
         
@@ -82,21 +82,21 @@ int repl(){
             break;
         }
 
-        vp_result r;
+        vpc_result r;
 
-        if(vp_parse("stdin", input, number, &r)){
+        if(vpc_parse("stdin", input, number, &r)){
             char* result = eval(r.output);
             printf("%s\n", result);
-            vp_ast_delete(r.output);
+            vpc_ast_delete(r.output);
         } else {
-            vp_err_print(r.error);
-            vp_err_delete(r.error);
+            vpc_err_print(r.error);
+            vpc_err_delete(r.error);
         }
 
         free(input);
     }
 
-    vp_cleanup(1, num);
+    vpc_cleanup(1, num);
 
     return 0;
 }

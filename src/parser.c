@@ -1,8 +1,56 @@
 #include "parser.h"
 
 /*
+ *  Types and Definitions
+ */
+enum {VPC_INPUT_STRING, VPC_INPUT_FILE, VPC_INPUT_PIPE };
+
+typedef struct{
+    int type;
+    char* filename;
+    vpc_cur_state state;
+
+    char* string;
+    char* buffer;
+    FILE* file;
+
+    int backtrack;
+    int marks_count;
+    vpc_cur_state* marks;
+    char* lasts;
+
+    char last;
+} vpc_input;
+
+/*
  *  Static functions
  */
+
+/*
+ *  State functions
+ */
+
+static vpc_cur_state vpc_state_invalid(){
+    vpc_cur_state s;
+    s.pos = -1;
+    s.row = -1;
+    s.col = -1;
+    return s;
+}
+
+static vpc_cur_state vpc_state_new(){
+    vpc_cur_state s;
+    s.pos = 0;
+    s.row = 0;
+    s.col = 0;
+    return s;
+}
+
+static vpc_cur_state* vpc_state_copy(vpc_cur_state s){
+    vpc_cur_state* r = malloc(sizeof(vpc_cur_state));
+    memcpy(r, &s, sizeof(vpc_cur_state));
+    return r;
+}
 
 /*
  *  Error functions
@@ -124,6 +172,53 @@ static vpc_err *vpc_err_or(vpc_err** es, int n){
         vpc_err_delete(es[i]);
 
     return e;
+}
+
+static vpc_err *vpc_err_repeat(vpc_err* e, const char* prefix){
+    unsigned int i;
+    char *expect = malloc(strlen(prefix) + 1);
+    strcpy(expect, prefix);
+
+    if(e->expected_count == 1){
+        expect = realloc(expect, strlen(expect) + strlen(e->expected[0]) + 1);
+        strcat(expect, e->expected[0]);
+    }
+
+    if(e->expected_count > 1){
+        for(i = 0; i < e->expected_count-2; i++){
+            expect = realloc(expect, strlen(expect) + strlen(e->expected[i]) + strlen(", ") + 1);
+            strcat(expect, e->expected[i]);
+            strcat(expect, ", ");
+        }
+
+        expect = realloc(expect, strlen(expect) + strlen(e->expected[e->expected_count-2]) + strlen(" or ") + 1);
+        strcat(expect, e->expected[e->expected_count-2]);
+        strcat(expect, " or ");
+        expect = realloc(expect, strlen(expect) + strlen(e->expected[e->expected_count-1]) + 1);
+        strcat(expect, e->expected[e->expected_count-1]);
+    }
+
+    vpc_err_clear_expected(e, expect);
+    free(expect);
+
+    return e;
+}
+
+static vpc_err* vpc_err_many1(vpc_err* x){
+    return vpc_err_repeat(x, "one or more of ");
+}
+
+static vpc_err *vpc_err_count(vpc_err* e, unsigned int n){
+    vpc_err* c;
+    unsigned int digits = n/10 + 1;
+    char* prefix = malloc(digits + strlen(" of ") + 1);
+    
+    sprintf(prefix, "%i of ", n);
+    c = vpc_err_repeat(e, prefix);
+    
+    free(prefix);
+    
+    return c;
 }
 
 /*

@@ -8,6 +8,8 @@
 #include <math.h>
 #include <errno.h>
 
+enum {VPC_FALSE, VPC_TRUE};
+
 /*
 ** State Type
 */
@@ -16,14 +18,14 @@ typedef struct {
   long pos;
   long row;
   long col;
-} vpc_state;
+} vpc_cur_state;
 
 /*
 ** Error Type
 */
 
 typedef struct {
-  vpc_state state;
+  vpc_cur_state state;
   int expected_count;
   char *filename;
   char *failure;
@@ -63,7 +65,7 @@ typedef void(*vpc_dtor)(vpc_val*);
 typedef vpc_val*(*vpc_ctor)(void);
 
 typedef vpc_val*(*vpc_apply)(vpc_val*);
-typedef vpc_val*(*vpc_applyo)(vpc_val*,void*);
+typedef vpc_val*(*vpc_apply_to)(vpc_val*,void*);
 typedef vpc_val*(*vpc_fold)(int,vpc_val**);
 
 /*
@@ -107,8 +109,8 @@ vpc_parser *vpc_state(void);
 
 vpc_parser *vpc_expect(vpc_parser *a, const char *e);
 vpc_parser *vpc_expectf(vpc_parser *a, const char *fmt, ...);
-vpc_parser *vpc_apply(vpc_parser *a, vpc_apply f);
-vpc_parser *vpc_applyo(vpc_parser *a, vpc_applyo f, void *x);
+vpc_parser *vpc_parse_apply(vpc_parser *a, vpc_apply f);
+vpc_parser *vpc_parse_apply_to(vpc_parser *a, vpc_apply_to f, void *x);
 
 vpc_parser *vpc_not(vpc_parser *a, vpc_dtor da);
 vpc_parser *vpc_not_lift(vpc_parser *a, vpc_dtor da, vpc_ctor lf);
@@ -245,7 +247,7 @@ vpc_parser *vpc_re(const char *re);
 typedef struct vpc_ast {
   char *tag;
   char *contents;
-  vpc_state state;
+  vpc_cur_state state;
   int children_num;
   struct vpc_ast** children;
 } vpc_ast;
@@ -256,7 +258,7 @@ vpc_ast *vpc_ast_add_root(vpc_ast *a);
 vpc_ast *vpc_ast_add_child(vpc_ast *r, vpc_ast *a);
 vpc_ast *vpc_ast_addag(vpc_ast *a, const char *t);
 vpc_ast *vpc_astag(vpc_ast *a, const char *t);
-vpc_ast *vpc_ast_state(vpc_ast *a, vpc_state s);
+vpc_ast *vpc_ast_state(vpc_ast *a, vpc_cur_state s);
 
 void vpc_ast_delete(vpc_ast *a);
 void vpc_ast_print(vpc_ast *a);

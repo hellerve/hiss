@@ -4,31 +4,91 @@
  *  Static functions
  */
 
-static vpc_err* vpc_err_new(const char* filename, vpc_state s, const char* expected, char recieved){
+/*
+ *  Error functions
+ */
+static vpc_err* vpc_err_new(const char* filename, vpc_cur_state s, const char* expected, char recieved){
     vpc_err* err = malloc(sizeof(vpc_err));
     err->filename = malloc(strlen(filename) + 1);
     strcpy(err->filename, filename);
     err->state = s,
-    err->expected_num = 1;
+    err->expected_count = 1;
     err->expected = malloc(sizeof(char*));
-    er->expected[0] = malloc(strlen(expected) + 1);
+    err->expected[0] = malloc(strlen(expected) + 1);
     strcpy(err->expected[0], expected);
     err->failure = NULL;
-    err->received = received;
-    return err
+    err->recieved = recieved;
+    return err;
 }
 
-static vpc_err* vpc_err_fail(const char* filename, vpc_state s, const char* failure){
+static vpc_err* vpc_err_fail(const char* filename, vpc_cur_state s, const char* failure){
     vpc_err* err = malloc(sizeof(vpc_err));
     err->filename = malloc(strlen(filename) + 1);
     strcpy(err->filename, filename);
     err->state = s;
-    err->expected_num = 0;
+    err->expected_count = 0;
     err->expected = NULL;
     err->failure = malloc(strlen(failure) + 1);
     strcpy(err->failure, failure);
     err->recieved = ' ';
     return err;
+}
+
+static int vpc_err_contains_expected(vpc_err* container, char* expected){
+    unsigned int i;
+    for(i = 0; i < container->expected_count; i++)
+        if(strcmp(container->expected[i], expected) == 0) return VPC_TRUE;
+
+    return VPC_FALSE;
+}
+
+static void vpc_err_add_expected(vpc_err* add_to, char* expected){
+    add_to->expected_count++;
+    add_to->expected = realloc(add_to->expected, sizeof(char*) * (long unsigned int) add_to->expected_count);
+    add_to->expected[add_to->expected_count-1] = malloc(strlen(expected) + 1);
+    strcpy(add_to->expected[add_to->expected_count-1], expected);
+}
+
+static void vpc_err_clear_expected(vpc_err* clear_from, char* expected){
+    unsigned int i;
+    for(i = 0; i < clear_from->expected_count; i++)
+        free(clear_from->expected[i]);
+    
+    clear_from->expected_count = 1;
+    clear_from->expected = realloc(clear_from->expected, sizeof(char*) * (long unsigned int) clear_from->expected_count);
+    clear_from->expected[0] = malloc(strlen(expected) + 1);
+    strcpy(clear_from->expected[0], expected);
+}
+
+static void vpc_err_string_cat(char* buffer, int* pos, int* max, char const* fmt, ...){
+    int left = ((*max) - (*pos));
+    va_list va;
+    va_start(va, fmt);
+    if(left < 0) left = 0;
+    *pos += vsprintf(buffer + (*pos), fmt, va);
+    va_end(va);
+}
+
+static char char_unescape_buffer[3];
+static const char *vpc_err_char_unescape(char c) {
+    char_unescape_buffer[0] = '\'';
+    char_unescape_buffer[1] = ' ';
+    char_unescape_buffer[2] = '\'';
+
+    switch (c) {
+        case '\a': return "bell";
+        case '\b': return "backspace";
+        case '\f': return "formfeed";
+        case '\r': return "carriage return";
+        case '\v': return "vertical tab";
+        case '\0': return "end of input";
+        case '\n': return "newline";
+        case '\t': return "tab";
+        case ' ' : return "space";
+        default:
+            char_unescape_buffer[1] = c;
+            return char_unescape_buffer;
+    }
 }
 
 /*
@@ -39,11 +99,10 @@ static vpc_err* vpc_err_fail(const char* filename, vpc_state s, const char* fail
  *  Error functions
  */
 
-void vpc_err_delete(vp_err *x) {
-  int i;
-  for (i = 0; i < x->expected_count; i++) {
+void vpc_err_delete(vpc_err *x) {
+  unsigned int i;
+  for (i = 0; i < x->expected_count; i++)
     free(x->expected[i]);
-  }
   
   free(x->expected);
   free(x->filename);
@@ -51,9 +110,48 @@ void vpc_err_delete(vp_err *x) {
   free(x);
 }
 
-char *vpc_err_string(vpc_err *e);
-void vpc_err_print(vpc_err *e);
-void vpc_err_printo(vpc_err *e, FILE *f);
+void vpc_err_print_to(vpc_err* print, FILE* f){
+    char* str = vpc_err_string(print);
+    fprintf(f, "%s", str);
+    free(str);
+}
+
+void vpc_err_print(vpc_err* print){
+    vpc_err_print_to(print, stdout);
+}
+
+char *vpc_err_string(vpc_err *e){
+    char* buffer = calloc(1, 1024);
+    int max = 1023;
+    int pos = 0;
+    unsigned int i;
+
+    if(e->failure){
+        vpc_err_string_cat(buffer, &pos, &max, "%s: error: %s\n", e->filename, e->failure);
+        return buffer;
+    }
+
+    vpc_err_string_cat(buffer, &pos, &max, "%s:%i:%i: error: expected ", e->filename, 
+                       e->state.row+1, e->state.col+1);
+
+    if(e->expected_count == 0) vpc_err_string_cat(buffer, &pos, &max, "ERROR: NOTHING EXPECTED");
+    else if(e->expected_count == 1) vpc_err_string_cat(buffer, &pos, &max, "%s", e->expected[0]);
+    else if(e->expected_count >= 2){ 
+        for(i = 0; i < e->expected_count-2; i++)
+            vpc_err_string_cat(buffer, &pos, &max, "%s, ", e->expected[i]);
+
+        vpc_err_string_cat(buffer, &pos, &max, "%s or %s",
+                e->expected[e->expected_count-2],
+                e->expected[e->expected_count-1]);
+    }
+
+    vpc_err_string_cat(buffer, &pos, &max, " at ");
+    vpc_err_string_cat(buffer, &pos, &max, vpc_err_char_unescape(e->recieved));
+    vpc_err_string_cat(buffer, &pos, &max, "\n");
+
+    return realloc(buffer, strlen(buffer)+1);
+
+}
 
 int vpc_parse(const char *filename, const char *string, vpc_parser *p, vpc_result *r);
 int vpc_parse_file(const char *filename, FILE *file, vpc_parser *p, vpc_result *r);
@@ -85,8 +183,8 @@ vpc_parser *vpc_state(void);
 
 vpc_parser *vpc_expect(vpc_parser *a, const char *e);
 vpc_parser *vpc_expectf(vpc_parser *a, const char *fmt, ...);
-vpc_parser *vpc_apply(vpc_parser *a, vpc_apply f);
-vpc_parser *vpc_applyo(vpc_parser *a, vpc_applyo f, void *x);
+vpc_parser *vpc_parse_apply(vpc_parser *a, vpc_apply f);
+vpc_parser *vpc_parse_apply_to(vpc_parser *a, vpc_apply_to f, void *x);
 
 vpc_parser *vpc_not(vpc_parser *a, vpc_dtor da);
 vpc_parser *vpc_not_lift(vpc_parser *a, vpc_dtor da, vpc_ctor lf);
@@ -206,7 +304,7 @@ vpc_ast *vpc_ast_add_root(vpc_ast *a);
 vpc_ast *vpc_ast_add_child(vpc_ast *r, vpc_ast *a);
 vpc_ast *vpc_ast_addag(vpc_ast *a, const char *t);
 vpc_ast *vpc_astag(vpc_ast *a, const char *t);
-vpc_ast *vpc_ast_state(vpc_ast *a, vpc_state s);
+vpc_ast *vpc_ast_state(vpc_ast *a, vpc_cur_state s);
 
 void vpc_ast_delete(vpc_ast *a);
 void vpc_ast_print(vpc_ast *a);

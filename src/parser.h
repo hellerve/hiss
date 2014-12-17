@@ -26,7 +26,7 @@ typedef struct {
 
 typedef struct {
   vpc_cur_state state;
-  int expected_count;
+  unsigned int expected_count;
   char *filename;
   char *failure;
   char **expected;
@@ -248,7 +248,7 @@ typedef struct vpc_ast {
   char *tag;
   char *contents;
   vpc_cur_state state;
-  int children_num;
+  unsigned int children_num;
   struct vpc_ast** children;
 } vpc_ast;
 

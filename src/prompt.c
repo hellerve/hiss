@@ -62,10 +62,9 @@ static inline void print_header(){
 }
 
 char* eval(vpc_ast* t){
-    if(strstr(t->tag, "number"))
-        return t->contents;
-    else
-        return "no match";
+    hiss_val x = iss_val_read(t);
+    hiss_val_println(x);
+    hiss_val_del(x);
 }
 
 int repl(){

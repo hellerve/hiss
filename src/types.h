@@ -8,7 +8,7 @@ enum {HISS_NUM, HISS_ERR};
 enum {HISS_ZERO_DIV, HISS_BAD_OP, HISS_BAD_NUM};
 
 typedef struct {
-    int type;
+    unsigned short type;
     long num;
     int err;
 } hiss_num;

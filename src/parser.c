@@ -91,6 +91,41 @@ static const char *vpc_err_char_unescape(char c) {
     }
 }
 
+static vpc_err *vpc_err_or(vpc_err** es, int n){
+    int i, j;
+    vpc_err *e = malloc(sizeof(vpc_err));
+    e->state = vpc_state_invalid();
+    e->expected_count = 0;
+    e->expected = NULL;
+    e->failure = NULL;
+    e->filename = malloc(strlen(es[0]->filename)+1);
+    strcpy(e->filename, es[0]->filename);
+
+    for(i = 0; i < n; i++)
+        if(es[i]->state.pos > e->state.pos) e->state = es[i]->state;
+
+    for( i = 0; i < n; i++){
+        if(es[i]->state.pos < e->state.pos) continue;
+
+        if(es[i]->failure){
+            e->failure = malloc(strlen(es[i]->failure)+1);
+            strcpy(e->failure, es[i]->failure);
+            break;
+        }
+
+        e->recieved = es[i]->recieved;
+
+        for(j = 0; j < es[i]->expected_count; j++)
+            if(!vpc_err_contains_expected(e, es[i]->expected[j])) vpc_err_add_expected(e, es[i]->expected[j]);
+
+    }
+
+    for(i = 0; i < n; i++)
+        vpc_err_delete(es[i]);
+
+    return e;
+}
+
 /*
  *  Exported functions
  */

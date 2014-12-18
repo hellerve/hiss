@@ -62,15 +62,30 @@ static inline void print_header(){
 }
 
 char* eval(vpc_ast* t){
-    hiss_val x = iss_val_read(t);
+    hiss_val x = hiss_val_read(t);
     hiss_val_println(x);
     hiss_val_del(x);
 }
 
 int repl(){
-    vpc_parser* num = vpc_new("number");
+    vpc_parser* number = vpc_new("number");
+    vpc_parser* symbol = vpc_new("symbol");
+    vpc_parser* s_expression  = vpc_new("s_expression");
+    vpc_parser* q_expression  = vpc_new("q_expression");
+    vpc_parser* expression   = vpc_new("expression");
+    vpc_parser* hiss  = vpc_new("hiss");
 
-    vpca_lang(VPCA_LANG_DEFAULT, "number: /-?[0-9]+/ ;", num);
+    vpca_lang(VPCA_LANG_DEFAULT,
+        "                                                             \
+            number        : /-?[0-9]+/ ;                              \
+            symbol        : \"list\" | \"head\" | \"tail\" | \"join\" \
+                            | \"eval\" |'+' | '-' | '*' | '/' ;       \
+            s_expression  : '(' <expr>* ')' ;                         \
+            q_expression  : '{' <expr>* '}' ;                         \
+            expression    : <number> | <symbol> | <sexpr> | <qexpr> ; \
+        hiss          : /^/ <expr>* /$/ ;                             \
+        ",
+    number, symbol, s_expression, q_expression, expression, hiss);
     while(1){
         char* input = readline(PROMPT);
         
@@ -95,7 +110,7 @@ int repl(){
         free(input);
     }
 
-    vpc_cleanup(1, num);
+    vpc_cleanup(6, number, symbol, s_expression, q_expression, expression, hiss);
 
     return 0;
 }

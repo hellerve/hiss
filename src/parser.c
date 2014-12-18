@@ -15,7 +15,7 @@ typedef struct{
     FILE* file;
 
     int backtrack;
-    int marks_count;
+    unsigned int marks_count;
     vpc_cur_state* marks;
     char* lasts;
 
@@ -222,6 +222,109 @@ static vpc_err *vpc_err_count(vpc_err* e, unsigned int n){
 }
 
 /*
+ * Inpu functions
+ */
+
+static vpc_input* mpc_input_new_string(const char*filename, const char* string){
+    vpc_input* v = malloc(sizeof(vpc_input));
+    v->filename = malloc(strlen(filename) + 1);
+    strcpy(v->filename, filename);
+    v->type = VPC_INPUT_STRING;
+    v->state = vpc_state_new();
+    v->string = malloc(strlen(string) + 1);
+    strcpy(v->string, string);
+    v->buffer = NULL;
+    v->file = NULL;
+    v->backtrack = 1;
+    v->marks_count = 0;
+    v->marks = NULL;
+    v->lasts = NULL;
+    v->last = '\0';
+    return v;
+}
+
+
+static vpc_input* vpc_input_new_pipe(const char* filename, FILE* pipe){
+    vpc_input* v = malloc(sizeof(vpc_input));
+    v->filename = malloc(strlen(filename) + 1);
+    strcpy(v->filename, filename);
+    v->type = VPC_INPUT_PIPE;
+    v->state = vpc_state_new();
+    v->string = NULL;
+    v->buffer = NULL;
+    if(pipe)
+        v->file = pipe;
+    else
+        v->file = fopen(filename, "r");
+    v->backtrack = 1;
+    v->marks_count = 0;
+    v->marks = NULL;
+    v->lasts = NULL;
+    v->last = '\0';
+    return v;
+}
+
+static vpc_input* vpc_input_new_file(const char* filename, FILE* file){
+    vpc_input* v = malloc(sizeof(vpc_input));
+    v->filename = malloc(strlen(filename) + 1);
+    strcpy(v->filename, filename);
+    v->type = VPC_INPUT_FILE;
+    v->state = vpc_state_new();
+    v->string = NULL;
+    v->buffer = NULL;
+    if(file)
+        v->file = file;
+    else
+        v->file = fopen(filename, "r");
+    v->backtrack = 1;
+    v->marks_count = 0;
+    v->marks = NULL;
+    v->lasts = NULL;
+    v->last = '\0';
+    return v;
+}
+
+static void vpc_input_delete(vpc_input* v){
+    free(v->filename);
+    if(v->type == VPC_INPUT_STRING) free(v->string);
+    if(v->type == VPC_INPUT_PIPE) free(v->buffer);
+    free(v->marks);
+    free(v->lasts);
+    free(v);
+}
+
+static void vpc_input_backtrack_disable(vpc_input* v) { 
+    v->backtrack = VPC_FALSE; 
+}
+
+static void vpc_input_backtrack_enable(vpc_input* v){ 
+    v->backtrack = VPC_TRUE; 
+}
+
+static void vpc_input_mark(vpc_input* v) {
+    if(v->backtrack != VPC_TRUE) return;
+    v->marks_count++;
+    v->marks = realloc(v->marks, sizeof(vpc_cur_state) * v->marks_count);
+    v->lasts = realloc(v->lasts, sizeof(char) * v->marks_count);
+    v->marks[v->marks_count-1] = v->state;
+    v->lasts[v->marks_count-1] = v->last;
+    if(v->type == VPC_INPUT_PIPE && v->marks_count == 1) v->buffer = calloc(1, 1);
+}
+
+static void mpc_input_unmark(vpc_input* v){
+    if (v->backtrack != VPC_TRUE) return;
+    v->marks_count--;
+    v->marks = realloc(v->marks, sizeof(vpc_cur_state) * v->marks_count);
+    v->lasts = realloc(v->lasts, sizeof(char) * v->marks_count);
+    if(v->type == VPC_INPUT_PIPE && v->marks_count == 0){
+        free(v->buffer);
+        v->buffer = NULL;
+    }
+}
+
+
+
+/*
  *  Exported functions
  */
 
@@ -282,6 +385,11 @@ char *vpc_err_string(vpc_err *e){
     return realloc(buffer, strlen(buffer)+1);
 
 }
+
+/*
+ * Input functions
+ */
+
 
 int vpc_parse(const char *filename, const char *string, vpc_parser *p, vpc_result *r);
 int vpc_parse_file(const char *filename, FILE *file, vpc_parser *p, vpc_result *r);

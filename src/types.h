@@ -66,8 +66,16 @@ hiss_val* hiss_val_copy(hiss_val* val);
 hiss_val* hiss_env_get(hiss_env* e, hiss_val* k);
 void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v);
 
+
 /*
- * Destructor function
+ * Environment/extension functions
+ */
+
+void hiss_env_add_builtin(hiss_env* e, const char* name, hiss_builtin fun);
+void hiss_env_add_builtins(hiss_env* e);
+
+/*
+ * Destructor functions
  */
 
 void hiss_env_del(hiss_env* e);

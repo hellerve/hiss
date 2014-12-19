@@ -1,4 +1,4 @@
-override CFLAGS+=-Werror -Wall -g -fPIC -O2 -DNDEBUG -ftrapv -Wfloat-equal -Wundef -Wwrite-strings -Wconversion -Wuninitialized -pedantic
+override CFLAGS+=-Werror -Wall -g -fPIC -O2 -DNDEBUG -ftrapv -Wfloat-equal -Wundef -Wwrite-strings -Wconversion -Wuninitialized -pedantic -std=c11
 PREFIX=/usr/bin/
 BUILDDIR=bin/
 LIBS=-ledit
@@ -13,10 +13,10 @@ all:
 
 #Uses picky extensions and makes everything(Extensions may break compiling)
 dev:
-	make all CFLAGS+=-Wshadow -Wunreachable-code -Wswitch-enum -Wswitch-default -Wcast-align -Winit-self -Wpointer-arith
+	make all CFLAGS+=-v -Wshadow -Wunreachable-code -Wswitch-enum -Wswitch-default -Wcast-align -Winit-self -Wpointer-arith
 
 #Cleans directory(no uninstall!)
-clean:
+clean: 
 	rm -rf $(BUILDDIR)
 
 #Installs into specified(or default) directory
@@ -25,7 +25,7 @@ install:
 	install $(BUILDDIR)$(TARGET) $(PREFIX)$(TARGET)
 
 #Uninstalls from specified(or default)directory
-uninstall:
+uninstall: 
 	rm -rf $(PREFIX)$(TARGET)
 
 #Checks for bad functions

@@ -32,7 +32,7 @@ struct hiss_val {
 };
 
 struct hiss_env {
-  int count;
+  unsigned int count;
   char** syms;
   hiss_val** vals;
 };
@@ -63,6 +63,8 @@ void hiss_val_println(hiss_val* val);
 hiss_val* hiss_val_pop(hiss_val* v, unsigned int i);
 hiss_val* hiss_val_take(hiss_val* v, unsigned int i);
 hiss_val* hiss_val_copy(hiss_val* val);
+hiss_val* hiss_env_get(hiss_env* e, hiss_val* k);
+void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v);
 
 /*
  * Destructor function
@@ -74,8 +76,7 @@ void hiss_val_del(hiss_val* val);
 /*
  * Evaluation functions
  */
-hiss_val* hiss_val_eval_sexpr(hiss_val* val);
-hiss_val* hiss_val_eval(hiss_val* val);
-hiss_val* builtin(hiss_val* val, const char* fun);
+hiss_val* hiss_val_eval_sexpr(hiss_env* e, hiss_val* v);
+hiss_val* hiss_val_eval(hiss_env* e, hiss_val* v);
 
 #endif

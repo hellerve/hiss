@@ -148,37 +148,6 @@ void hiss_val_del(hiss_val* val){
     free(val);
 }
 
-hiss_val* hiss_val_eval_sexpr(hiss_val* val){
-    unsigned int i;
-    hiss_val* result = NULL;
-    hiss_val* f = NULL;
-
-    for(i = 0; i < val->count; i++)
-        val->cells[i] = hiss_val_eval(val->cells[i]);
-
-    for(i = 0; i < val->count; i++)
-        if(val->cells[i]->type == HISS_ERR) return hiss_val_take(val, i);
-
-    if(val->count == 0) return val;
-    else if(val->count == 1) return hiss_val_take(val, 0);
-
-    f = hiss_val_pop(val, 0);
-    if(f->type != HISS_SYM){
-        hiss_val_del(f);
-        hiss_val_del(val);
-        return hiss_err("S-expession does not start with symbol!");
-    }
-
-    result = builtin(val, f->sym);
-    hiss_val_del(f);
-    return result;
-}
-
-hiss_val* hiss_val_eval(hiss_val* val){
-    if(val->type == HISS_SEXPR) return hiss_val_eval_sexpr(val);
-    return val;
-}
-
 hiss_val* hiss_val_pop(hiss_val* val, unsigned int i){
   hiss_val* x = val->cells[i];
 
@@ -197,7 +166,7 @@ hiss_val* hiss_val_take(hiss_val* val, unsigned int i){
   return x;
 }
 
-static hiss_val* builtin_op(hiss_val* a, const char* op){
+static hiss_val* builtin_op(hiss_env*e, hiss_val* a, const char* op){
   unsigned int i;
   hiss_val* x = NULL;
   hiss_val* y = NULL;
@@ -235,7 +204,7 @@ static hiss_val* builtin_op(hiss_val* a, const char* op){
   return x;
 }
 
-static hiss_val* builtin_head(hiss_val* a){    
+static hiss_val* builtin_head(hiss_env* e, hiss_val* a){    
   hiss_val* val = NULL;
   HISS_ASSERT(a, a->count == 1, "Function 'head' passed too many arguments!");
   HISS_ASSERT(a, a->cells[0]->type == HISS_QEXPR, "Function 'head' passed incorrect type!");
@@ -246,7 +215,7 @@ static hiss_val* builtin_head(hiss_val* a){
   return val;
 }
 
-static hiss_val* builtin_tail(hiss_val* a){
+static hiss_val* builtin_tail(hiss_env* e, hiss_val* a){
   hiss_val* val = NULL;
   HISS_ASSERT(a, a->count == 1, "Function 'tail' passed too many arguments!");
   HISS_ASSERT(a, a->cells[0]->type == HISS_QEXPR, "Function 'tail' passed incorrect type!");
@@ -257,12 +226,12 @@ static hiss_val* builtin_tail(hiss_val* a){
   return val;
 }
 
-static hiss_val* builtin_list(hiss_val* a) {
+static hiss_val* builtin_list(hiss_env* e, hiss_val* a) {
   a->type = HISS_QEXPR;
   return a;
 }
 
-static hiss_val* builtin_eval(hiss_val* a){
+static hiss_val* builtin_eval(hiss_env* e, hiss_val* a){
   hiss_val* x = NULL;
   HISS_ASSERT(a, a->count == 1,
     "Function 'eval' passed too many arguments!");
@@ -271,10 +240,10 @@ static hiss_val* builtin_eval(hiss_val* a){
 
   x = hiss_val_take(a, 0);
   x->type = HISS_SEXPR;
-  return hiss_val_eval(x);
+  return hiss_val_eval(e, x);
 }
 
-static hiss_val* hiss_val_join(hiss_val* x, hiss_val* y) {
+static hiss_val* hiss_val_join(hiss_env* e, hiss_val* x, hiss_val* y) {
   while (y->count)
     x = hiss_val_add(x, hiss_val_pop(y, 0));
 
@@ -282,7 +251,7 @@ static hiss_val* hiss_val_join(hiss_val* x, hiss_val* y) {
   return x;
 }
 
-static hiss_val* builtin_join(hiss_val* a) {
+static hiss_val* builtin_join(hiss_env*e, hiss_val* a) {
   unsigned int i; 
   hiss_val* x;
     
@@ -293,21 +262,10 @@ static hiss_val* builtin_join(hiss_val* a) {
   x = hiss_val_pop(a, 0);
 
   while (a->count)
-    x = hiss_val_join(x, hiss_val_pop(a, 0));
+    x = hiss_val_join(e, x, hiss_val_pop(a, 0));
 
   hiss_val_del(a);
   return x;
-}
-
-hiss_val* builtin(hiss_val* a, const char* fun){
-  if(strcmp("list", fun) == 0) return builtin_list(a);
-  if(strcmp("head", fun) == 0) return builtin_head(a);
-  if(strcmp("tail", fun) == 0) return builtin_tail(a); 
-  if(strcmp("join", fun) == 0) return builtin_join(a); 
-  if(strcmp("eval", fun) == 0) return builtin_eval(a); 
-  if(strstr("+-/*", fun)) return builtin_op(a, fun); 
-  hiss_val_del(a);
-  return hiss_err("Unknown Function!");
 }
 
 hiss_val* hiss_val_copy(hiss_val* val){
@@ -336,4 +294,102 @@ hiss_val* hiss_val_copy(hiss_val* val){
   }
   
   return c;
+}
+
+hiss_val* hiss_env_get(hiss_env* e, hiss_val* k){
+  unsigned int i;
+  for(i = 0; i < e->count; i++)
+    if (strcmp(e->syms[i], k->sym) == 0)
+      return hiss_val_copy(e->vals[i]);
+ 
+  return hiss_err("unbound symbol!");
+}
+
+void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
+  for(int i = 0; i < e->count; i++){
+      if(strcmp(e->syms[i], k->sym) == 0){
+        hiss_val_del(e->vals[i]);
+        e->vals[i] = hiss_val_copy(v);
+        return;
+    }
+  }
+
+  e->count++;
+  e->vals = realloc(e->vals, sizeof(hiss_val*) * e->count);
+  e->syms = realloc(e->syms, sizeof(char*) * e->count);
+
+  e->vals[e->count-1] = hiss_val_copy(v);
+  e->syms[e->count-1] = malloc(strlen(k->sym)+1);
+  strcpy(e->syms[e->count-1], k->sym);
+}
+
+hiss_val* hiss_val_eval(hiss_env* e, hiss_val* v){
+  if (v->type == HISS_SYM) {
+    hiss_val* x = hiss_env_get(e, v);
+    hiss_val_del(v);
+    return x;
+  }
+  
+  if(v->type == HISS_SEXPR) return hiss_val_eval_sexpr(e, v);
+  return v;
+}
+
+hiss_val* hiss_val_eval_sexpr(hiss_env* e, hiss_val* v){
+  unsigned int i;
+  for(i = 0; i < v->count; i++)
+    v->cells[i] = hiss_val_eval(e, v->cells[i]);
+  
+  for(i = 0; i < v->count; i++)
+    if(v->cells[i]->type == HISS_ERR) return hiss_val_take(v, i);
+
+  if(v->count == 0) { return v; }  
+  if(v->count == 1) { return hiss_val_take(v, 0); }
+
+  hiss_val* f = hiss_val_pop(v, 0);
+  if(f->type != HISS_FUN){
+    hiss_val_del(v); 
+    hiss_val_del(f);
+    return hiss_err("first element is not a function");
+  }
+
+  hiss_val* result = f->fun(e, v);
+  hiss_val_del(f);
+  return result;
+}
+
+hiss_val* builtin_add(hiss_env* e, hiss_val* a){
+  return builtin_op(e, a, "+");
+}
+
+hiss_val* builtin_sub(hiss_env* e, hiss_val* a){
+  return builtin_op(e, a, "-");
+}
+
+hiss_val* builtin_mul(hiss_env* e, hiss_val* a){
+  return builtin_op(e, a, "*");
+}
+
+hiss_val* builtin_div(hiss_env* e, hiss_val* a){
+  return builtin_op(e, a, "/");
+}
+
+void hiss_env_add_builtin(hiss_env* e, const char* name, hiss_builtin fun){
+  hiss_val* k = hiss_val_sym(name);
+  hiss_val* v = hiss_val_fun(fun);
+  hiss_env_put(e, k, v);
+  hiss_val_del(k); 
+  hiss_val_del(v);
+}
+
+void hiss_env_add_builtins(hiss_env* e){  
+  hiss_env_add_builtin(e, "list", builtin_list);
+  hiss_env_add_builtin(e, "head", builtin_head);
+  hiss_env_add_builtin(e, "tail", builtin_tail);
+  hiss_env_add_builtin(e, "eval", builtin_eval);
+  hiss_env_add_builtin(e, "join", builtin_join);
+
+  hiss_env_add_builtin(e, "+", builtin_add);
+  hiss_env_add_builtin(e, "-", builtin_sub);
+  hiss_env_add_builtin(e, "*", builtin_mul);
+  hiss_env_add_builtin(e, "/", builtin_div);
 }

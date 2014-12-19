@@ -85,6 +85,10 @@ int repl(){
         hiss          : /^/ <expr>* /$/ ;                             \
         ",
     number, symbol, s_expression, q_expression, expression, hiss);
+    
+    hiss_env* e = hiss_env_new();
+    hiss_env_add_builtins(e);
+    
     while(1){
         char* input = readline(PROMPT);
         
@@ -97,9 +101,11 @@ int repl(){
 
         vpc_result r;
 
-        if(vpc_parse("stdin", input, number, &r)){
-            char* result = eval(r.output);
-            printf("%s\n", result);
+        if(vpc_parse("stdin", input, hiss, &r)){
+            hiss_val* x = hiss_val_eval(e, hiss_val_read(r.output));
+            hiss_val_println(x);
+            hiss_val_del(x);
+            
             vpc_ast_delete(r.output);
         } else {
             vpc_err_print(r.error);
@@ -109,6 +115,8 @@ int repl(){
         free(input);
     }
 
+    hiss_env_del(e);
+    
     vpc_cleanup(6, number, symbol, s_expression, q_expression, expression, hiss);
 
     return 0;

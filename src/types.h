@@ -58,7 +58,6 @@ hiss_val* hiss_val_add(hiss_val* v, hiss_val* a);
 hiss_val* hiss_val_read_num(vpc_ast* t);
 hiss_val* hiss_val_read(vpc_ast* t);
 void hiss_val_print(hiss_val* val);
-static void hiss_val_expr_print(hiss_val* v, const char open, const char close);
 void hiss_val_println(hiss_val* val);
 hiss_val* hiss_val_pop(hiss_val* v, unsigned int i);
 hiss_val* hiss_val_take(hiss_val* v, unsigned int i);

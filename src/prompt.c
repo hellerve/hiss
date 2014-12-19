@@ -61,12 +61,6 @@ static inline void print_header(){
     printf("For exiting, press Ctrl-C or type exit/quit\n\n");
 }
 
-char* eval(vpc_ast* t){
-    hiss_val x = hiss_val_read(t);
-    hiss_val_println(x);
-    hiss_val_del(x);
-}
-
 int repl(){
     vpc_parser* number = vpc_new("number");
     vpc_parser* symbol = vpc_new("symbol");

@@ -78,8 +78,7 @@ int repl(){
     vpca_lang(VPCA_LANG_DEFAULT,
         "                                                             \
             number        : /-?[0-9]+/ ;                              \
-            symbol        : \"list\" | \"head\" | \"tail\" | \"join\" \
-                            | \"eval\" |'+' | '-' | '*' | '/' ;       \
+            symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/          \
             s_expression  : '(' <expr>* ')' ;                         \
             q_expression  : '{' <expr>* '}' ;                         \
             expression    : <number> | <symbol> | <sexpr> | <qexpr> ; \

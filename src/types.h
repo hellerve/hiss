@@ -11,25 +11,41 @@
 #define HISS_ASSERT(args, cond, err) \
   if (!(cond)) { hiss_val_del(args); return hiss_err(err); }
 
-enum {HISS_ERR, HISS_NUM, HISS_SYM, HISS_SEXPR, HISS_QEXPR};
+enum {HISS_ERR, HISS_NUM, HISS_SYM, HISS_FUN, HISS_SEXPR, HISS_QEXPR};
 
 enum {HISS_ZERO_DIV, HISS_BAD_OP, HISS_BAD_NUM};
 
-typedef struct hiss_val {
+struct hiss_val;
+struct hiss_env;
+typedef struct hiss_val hiss_val;
+typedef struct hiss_env hiss_env;
+typedef hiss_val*(*hiss_builtin)(hiss_env*, hiss_val*);
+
+struct hiss_val {
     unsigned short type;
     long num;
     char* err;
     char* sym;
+    hiss_builtin fun;
     unsigned int count;
     struct hiss_val** cells;
-} hiss_val;
+};
+
+struct hiss_env {
+  int count;
+  char** syms;
+  hiss_val** vals;
+};
+
 
 /*
  * Constructor functions
  */
 
+hiss_env* hiss_env_new();
 hiss_val* hiss_val_num(long n);
 hiss_val* hiss_val_sym(const char* s);
+hiss_val* hiss_val_fun(hiss_builtin fun);
 hiss_val* hiss_val_sexpr();
 hiss_val* hiss_val_qexpr();
 hiss_val* hiss_err(const char* m);
@@ -46,11 +62,13 @@ static void hiss_val_expr_print(hiss_val* v, const char open, const char close);
 void hiss_val_println(hiss_val* val);
 hiss_val* hiss_val_pop(hiss_val* v, unsigned int i);
 hiss_val* hiss_val_take(hiss_val* v, unsigned int i);
+hiss_val* hiss_val_copy(hiss_val* val);
 
 /*
  * Destructor function
  */
 
+void hiss_env_del(hiss_env* e);
 void hiss_val_del(hiss_val* val);
 
 /*
@@ -58,6 +76,6 @@ void hiss_val_del(hiss_val* val);
  */
 hiss_val* hiss_val_eval_sexpr(hiss_val* val);
 hiss_val* hiss_val_eval(hiss_val* val);
-hiss_val* builtin_op(hiss_val* val, const char* op);
+hiss_val* builtin(hiss_val* val, const char* fun);
 
 #endif

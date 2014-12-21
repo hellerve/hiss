@@ -1,0 +1,22 @@
+fun {reverse l} {
+    if(== l {})
+        {{}}
+        {join (reverse (tail l)) (head l)}}
+
+fun {at l i} {
+    if(== i 0)
+         {(head l)}
+         {(at (tail l)(+ 1 i))}}
+
+fun {in l e} {
+    if(== l {})
+        {false}
+        {(if(== e (head l)))
+            {true}
+            {(in (tail l) e)}}}
+
+fun {last l} {
+    if(== 1 (len l))
+        {(head l)}
+        {(last (tail l)}}
+

@@ -4,6 +4,12 @@
  *  Types and Definitions
  */
 
+
+#define VPC_CONTINUE(st, x) vpc_stack_set_state(stk, st); if(!vpc_stack_pushp(stk, x)) break; continue
+#define VPC_SUCCESS(x) vpc_stack_popp(stk, &p, &st); if(!vpc_stack_pushr(stk, vpc_result_out(x), 1)) break; continue
+#define VPC_FAILURE(x) vpc_stack_popp(stk, &p, &st); if(!vpc_stack_pushr(stk, vpc_result_err(x), 0)) break; continue
+#define VPC_PRIMATIVE(x, f) if(f){ VPC_SUCCESS(x);}else{VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Incorrect Input"));}
+
 /*
  *  Input type
  */
@@ -118,19 +124,19 @@ typedef struct{
 } vpc_pdata_not;
 
 typedef struct{ 
-    int n; 
+    unsigned int n; 
     vpc_fold f; 
     vpc_parser* x; 
     vpc_dtor dx; 
 } vpc_pdata_repeat;
 
 typedef struct{ 
-    int n; 
+    unsigned int n; 
     vpc_parser** xs; 
 } vpc_pdata_or;
 
 typedef struct{ 
-    int n; 
+    unsigned int n; 
     vpc_fold f; 
     vpc_parser** xs; 
     vpc_dtor* dxs; 
@@ -167,12 +173,12 @@ struct vpc_parser{
 
 typedef struct{
   int parsers_count;
-  int parsers_slots;
+  unsigned int parsers_slots;
   vpc_parser** parsers;
   int* states;
 
-  int results_count;
-  int results_slots;
+  unsigned int results_count;
+  unsigned int results_slots;
   vpc_result* results;
   int* returns;
   
@@ -298,7 +304,7 @@ static const char *vpc_err_char_unescape(char c) {
     }
 }
 
-static vpc_err *vpc_err_or(vpc_err** es, int n){
+static vpc_err *vpc_err_or(vpc_err** es, unsigned int n){
     int i, j;
     vpc_err *e = malloc(sizeof(vpc_err));
     e->state = vpc_state_invalid();
@@ -676,7 +682,7 @@ static int vpc_input_anchor(vpc_input* v, int(*f)(char,char)){
 }
 
 /*
- *  Static functions
+ *  Stack functions
  */
 
 static vpc_stack* vpc_stack_new(const char* filename){
@@ -706,7 +712,6 @@ static void vpc_stack_err(vpc_stack* s, vpc_err* e){
 
 static int vpc_stack_terminate(vpc_stack* s, vpc_result* r){
   int success = s->returns[0];
-  
   if(success){
     r->output = s->results[0].output;
     vpc_err_delete(s->err);
@@ -722,6 +727,192 @@ static int vpc_stack_terminate(vpc_stack* s, vpc_result* r){
   free(s);
   
   return success;
+}
+
+/*
+ *  Stack parser functions
+ */
+
+static void vpc_stack_set_state(vpc_stack* s, int x){
+  s->states[s->parsers_count-1] = x;
+}
+
+static int vpc_stack_parsers_reserve_more(vpc_stack* s){
+  vpc_parser** check_realloc = NULL;
+  int* check_realloc2 = NULL;
+  if(s->parsers_count > s->parsers_slots){
+    s->parsers_slots = (unsigned int) ceil((s->parsers_slots+1) * 1.5);
+    check_realloc = realloc(s->parsers, sizeof(vpc_parser*) * s->parsers_slots);
+    if(!check_realloc) return VPC_FALSE;
+    s->parsers = check_realloc;
+    check_realloc = NULL;
+    check_realloc2 = realloc(s->states, sizeof(int) * s->parsers_slots);
+    if(!check_realloc2) return VPC_FALSE;
+    s->states = check_realloc2;
+    check_realloc2 = 0;
+  }
+  return VPC_TRUE;
+}
+
+static int vpc_stack_parsers_reserve_less(vpc_stack* s){
+  vpc_parser** check_realloc = NULL;
+  int* check_realloc2 = NULL;
+  if(s->parsers_slots > pow(s->parsers_count+1, 1.5)){
+    s->parsers_slots = (unsigned int) floor((s->parsers_slots-1) * (1.0/1.5));
+    check_realloc = realloc(s->parsers, sizeof(vpc_parser*) * s->parsers_slots);
+    if(!check_realloc) return VPC_FALSE;
+    s->parsers = check_realloc;
+    check_realloc = NULL;
+    s->states = realloc(s->states, sizeof(int) * s->parsers_slots);
+    check_realloc2 = realloc(s->states, sizeof(int) * s->parsers_slots);
+    if(!check_realloc2) return VPC_FALSE;
+    s->states = check_realloc2;
+    check_realloc2 = 0;
+  }
+  return VPC_TRUE;
+}
+
+static int vpc_stack_pushp(vpc_stack* s, vpc_parser* p){
+  s->parsers_count++;
+  if(!vpc_stack_parsers_reserve_more(s)) return VPC_FALSE;
+  s->parsers[s->parsers_count-1] = p;
+  s->states[s->parsers_count-1] = 0;
+  return VPC_TRUE;
+}
+
+static void vpc_stack_popp(vpc_stack* s, vpc_parser** p, int* st){
+  *p = s->parsers[s->parsers_count-1];
+  *st = s->states[s->parsers_count-1];
+  s->parsers_count--;
+  vpc_stack_parsers_reserve_less(s);
+}
+
+static void vpc_stack_peepp(vpc_stack* s, vpc_parser** p, int* st){
+  *p = s->parsers[s->parsers_count-1];
+  *st = s->states[s->parsers_count-1];
+}
+
+static int vpc_stack_empty(vpc_stack *s){
+  return s->parsers_count == 0;
+}
+
+/*
+ *  Stack result functions
+ */
+
+static vpc_result vpc_result_err(vpc_err* e){
+  vpc_result r;
+  r.error = e;
+  return r;
+}
+
+static vpc_result vpc_result_out(vpc_val* x){
+  vpc_result r;
+  r.output = x;
+  return r;
+}
+
+static int vpc_stack_results_reserve_more(vpc_stack* s){
+  vpc_result* realloc_check;
+  int* realloc_check2;
+  if (s->results_count > s->results_slots){
+    s->results_slots = (unsigned int) ceil((s->results_slots + 1) * 1.5);
+    realloc_check = realloc(s->results, sizeof(vpc_result) * s->results_slots);
+    if(!realloc_check) return VPC_FALSE;
+    s->results = realloc_check;
+    realloc_check = NULL;
+    realloc_check2 = realloc(s->returns, sizeof(int) * s->results_slots);
+    if(!realloc_check2) return VPC_FALSE;
+    s->returns = realloc_check2;
+    realloc_check2 = NULL;
+  }
+  return VPC_TRUE;
+}
+
+static int vpc_stack_results_reserve_less(vpc_stack* s){
+  vpc_result* realloc_check;
+  int* realloc_check2;
+  if ( s->results_slots > pow(s->results_count+1, 1.5)) {
+    s->results_slots = (unsigned int) floor((s->results_slots-1) * (1.0/1.5));
+    realloc_check = realloc(s->results, sizeof(vpc_result) * s->results_slots);
+    if(!realloc_check) return VPC_FALSE;
+    s->results = realloc_check;
+    realloc_check = NULL;
+    realloc_check2 = realloc(s->returns, sizeof(int) * s->results_slots);
+    if(!realloc_check2) return VPC_FALSE;
+    s->returns = realloc_check2;
+    realloc_check2 = NULL;
+  }
+  return VPC_TRUE;
+}
+
+static int vpc_stack_pushr(vpc_stack* s, vpc_result x, int r){
+  s->results_count++;
+  if(!vpc_stack_results_reserve_more(s)) return VPC_FALSE;
+  s->results[s->results_count-1] = x;
+  s->returns[s->results_count-1] = r;
+  return VPC_TRUE;
+}
+
+static int vpc_stack_popr(vpc_stack* s, vpc_result* x){
+  int r;
+  *x = s->results[s->results_count-1];
+  r = s->returns[s->results_count-1];
+  s->results_count--;
+  vpc_stack_results_reserve_less(s);
+  return r;
+}
+
+static int vpc_stack_peekr(vpc_stack* s, vpc_result* x){
+  *x = s->results[s->results_count-1];
+  return s->returns[s->results_count-1];
+}
+
+static void vpc_stack_popr_err(vpc_stack* s, int n){
+  vpc_result x;
+  while(n){
+    vpc_stack_popr(s, &x);
+    vpc_stack_err(s, x.error);
+    n--;
+  }
+}
+
+static void vpc_stack_popr_out(vpc_stack* s, int n, vpc_dtor* ds){
+  vpc_result x;
+  while(n){
+    vpc_stack_popr(s, &x);
+    ds[n-1](x.output);
+    n--;
+  }
+}
+
+static void vpc_stack_popr_out_single(vpc_stack* s, int n, vpc_dtor dx){
+  vpc_result x;
+  while(n){
+    vpc_stack_popr(s, &x);
+    dx(x.output);
+    n--;
+  }
+}
+
+static void vpc_stack_popr_n(vpc_stack* s, unsigned int n){
+  vpc_result x;
+  while(n){
+    vpc_stack_popr(s, &x);
+    n--;
+  }
+}
+
+static vpc_val* vpc_stack_merger_out(vpc_stack* s, unsigned int n, vpc_fold f){
+  vpc_val* x = f(n, (vpc_val**)(&s->results[s->results_count-n]));
+  vpc_stack_popr_n(s, n);
+  return x;
+}
+
+static vpc_err* vpc_stack_merger_err(vpc_stack* s, unsigned int n){
+  vpc_err* x = vpc_err_or((vpc_err**)(&s->results[s->results_count-n]), n);
+  vpc_stack_popr_n(s, n);
+  return x;
 }
 
 /*
@@ -787,7 +978,251 @@ char *vpc_err_string(vpc_err *e){
 }
 
 /*
- * Input functions
+ * Parse function
  */
 
 
+int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final){
+  int st = 0;
+  vpc_parser *p = NULL;
+  vpc_stack *stk = vpc_stack_new(i->filename);
+  char *s;
+  vpc_result r;
+
+  /* Begin the madness */
+  vpc_stack_pushp(stk, init);
+  
+  while(!vpc_stack_empty(stk)){
+    vpc_stack_peepp(stk, &p, &st);
+    switch (p->type) {
+      /* Basic Parsers */
+      case VPC_TYPE_ANY:       VPC_PRIMATIVE(s, vpc_input_any(i, &s));
+      case VPC_TYPE_SINGLE:    VPC_PRIMATIVE(s, vpc_input_char(i, p->data.single.x, &s));
+      case VPC_TYPE_RANGE:     VPC_PRIMATIVE(s, vpc_input_range(i, p->data.range.x, p->data.range.y, &s));
+      case VPC_TYPE_ONEOF:     VPC_PRIMATIVE(s, vpc_input_oneof(i, p->data.string.x, &s));
+      case VPC_TYPE_NONEOF:    VPC_PRIMATIVE(s, vpc_input_noneof(i, p->data.string.x, &s));
+      case VPC_TYPE_SATISFY:   VPC_PRIMATIVE(s, vpc_input_satisfy(i, p->data.satisfy.f, &s));
+      case VPC_TYPE_STRING:    VPC_PRIMATIVE(s, vpc_input_string(i, p->data.string.x, &s));
+      
+      /* Other parsers */
+      case VPC_TYPE_UNDEFINED: VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Parser Undefined!"));      
+      case VPC_TYPE_PASS:      VPC_SUCCESS(NULL);
+      case VPC_TYPE_FAIL:      VPC_FAILURE(vpc_err_fail(i->filename, i->state, p->data.fail.m));
+      case VPC_TYPE_LIFT:      VPC_SUCCESS(p->data.lift.lf());
+      case VPC_TYPE_LIFT_VAL:  VPC_SUCCESS(p->data.lift.x);
+      case VPC_TYPE_STATE:     VPC_SUCCESS(vpc_state_copy(i->state));
+      case VPC_TYPE_ANCHOR:
+        if(vpc_input_anchor(i, p->data.anchor.f)){
+          VPC_SUCCESS(NULL);
+        }else{
+          VPC_FAILURE(vpc_err_new(i->filename, i->state, "anchor", vpc_input_peekc(i)));
+        }
+      
+      /* Application Parsers */
+      case VPC_TYPE_EXPECT:
+        if(st == VPC_FALSE) VPC_CONTINUE(1, p->data.expect.x);
+        if(st == VPC_TRUE){
+          if(vpc_stack_popr(stk, &r)){
+            VPC_SUCCESS(r.output);
+          }else {
+            vpc_err_delete(r.error); 
+            VPC_FAILURE(vpc_err_new(i->filename, i->state, p->data.expect.m, vpc_input_peekc(i)));
+          }
+        }
+      case VPC_TYPE_APPLY:
+        if(st == VPC_FALSE) VPC_CONTINUE(1, p->data.apply.x);
+        if(st == VPC_TRUE){
+          if(vpc_stack_popr(stk, &r)){
+            VPC_SUCCESS(p->data.apply.f(r.output));
+          }else{
+            VPC_FAILURE(r.error);
+          }
+        }
+      case VPC_TYPE_APPLY_TO:
+        if(st == VPC_FALSE) VPC_CONTINUE(1, p->data.apply_to.x);
+        if(st == VPC_TRUE){
+          if(vpc_stack_popr(stk, &r)){
+            VPC_SUCCESS(p->data.apply_to.f(r.output, p->data.apply_to.d));
+          }else{
+            VPC_FAILURE(r.error);
+          }
+        }
+      case VPC_TYPE_PREDICT:
+        if (st == VPC_FALSE){ 
+            vpc_input_backtrack_disable(i); 
+            VPC_CONTINUE(1, p->data.predict.x);
+        }
+        if (st == VPC_TRUE){
+          vpc_input_backtrack_enable(i);
+          vpc_stack_popp(stk, &p, &st);
+          continue;
+        }
+      
+      /* Optional Parsers */
+      
+      /* TODO: Update Not Error Message */
+      
+      case VPC_TYPE_NOT:
+        if(st == VPC_FALSE){ 
+            vpc_input_mark(i); 
+            VPC_CONTINUE(1, p->data.not.x); 
+        }
+        if(st == VPC_TRUE){
+          if(vpc_stack_popr(stk, &r)){
+            vpc_input_rewind(i);
+            p->data.not.dx(r.output);
+            VPC_FAILURE(vpc_err_new(i->filename, i->state, "opposite", vpc_input_peekc(i)));
+          } else {
+            vpc_input_unmark(i);
+            vpc_stack_err(stk, r.error);
+            VPC_SUCCESS(p->data.not.lf());
+          }
+        }
+      case VPC_TYPE_MAYBE:
+        if(st == VPC_FALSE) VPC_CONTINUE(1, p->data.not.x);
+        if(st == VPC_TRUE){
+          if(vpc_stack_popr(stk, &r)){
+            VPC_SUCCESS(r.output);
+          }else{
+            vpc_stack_err(stk, r.error);
+            VPC_SUCCESS(p->data.not.lf());
+          }
+        }
+      
+      /* Repeat Parsers */
+      
+      case VPC_TYPE_MANY:
+        if(st == VPC_FALSE) VPC_CONTINUE(st+1, p->data.repeat.x);
+        if(st >  0){
+          if(vpc_stack_peekr(stk, &r)){
+            VPC_CONTINUE(st+1, p->data.repeat.x);
+          } else {
+            vpc_stack_popr(stk, &r);
+            vpc_stack_err(stk, r.error);
+            VPC_SUCCESS(vpc_stack_merger_out(stk, (unsigned) st-1, p->data.repeat.f));
+          }
+        }
+      case VPC_TYPE_MANY1:
+        if(st == VPC_FALSE) VPC_CONTINUE(st+1, p->data.repeat.x);
+        if(st >  0){
+          if(vpc_stack_peekr(stk, &r)){
+            VPC_CONTINUE(st+1, p->data.repeat.x);
+          } else {
+            if(st == 1){
+              vpc_stack_popr(stk, &r);
+              VPC_FAILURE(vpc_err_many1(r.error));
+            } else {
+              vpc_stack_popr(stk, &r);
+              vpc_stack_err(stk, r.error);
+              VPC_SUCCESS(vpc_stack_merger_out(stk, (unsigned) st-1, p->data.repeat.f));
+            }
+          }
+        }
+      case VPC_TYPE_COUNT:
+        if(st == VPC_FALSE){ 
+            vpc_input_mark(i); 
+            VPC_CONTINUE(st+1, p->data.repeat.x); 
+        }
+        if(st >  0){
+          if(vpc_stack_peekr(stk, &r)){
+            VPC_CONTINUE(st+1, p->data.repeat.x);
+          } else {
+            if(st != (p->data.repeat.n+1)){
+              vpc_stack_popr(stk, &r);
+              vpc_stack_popr_out_single(stk, st-1, p->data.repeat.dx);
+              vpc_input_rewind(i);
+              VPC_FAILURE(vpc_err_count(r.error, p->data.repeat.n));
+            } else {
+              vpc_stack_popr(stk, &r);
+              vpc_stack_err(stk, r.error);
+              vpc_input_unmark(i);
+              VPC_SUCCESS(vpc_stack_merger_out(stk, (unsigned) st-1, p->data.repeat.f));
+            }
+          }
+        }
+        
+      /* Combinatory Parsers */
+      
+      case VPC_TYPE_OR:
+        if (p->data.or.n == 0) VPC_SUCCESS(NULL);
+        if(st == 0) VPC_CONTINUE(st+1, p->data.or.xs[st]);
+        if(st <= p->data.or.n){
+          if(vpc_stack_peekr(stk, &r)){
+            vpc_stack_popr(stk, &r);
+            vpc_stack_popr_err(stk, st-1);
+            VPC_SUCCESS(r.output);
+          }
+          if(st <  p->data.or.n) VPC_CONTINUE(st+1, p->data.or.xs[st]);
+          if (st == p->data.or.n) VPC_FAILURE(vpc_stack_merger_err(stk, p->data.or.n));
+        }
+      case VPC_TYPE_AND:
+        if (p->data.and.n == 0) VPC_SUCCESS(p->data.and.f(0, NULL));
+        if (st == VPC_FALSE){ 
+            vpc_input_mark(i); 
+            VPC_CONTINUE(st+1, p->data.and.xs[st]); 
+        }
+        if(st <= p->data.and.n){
+          if(!vpc_stack_peekr(stk, &r)){
+            vpc_input_rewind(i);
+            vpc_stack_popr(stk, &r);
+            vpc_stack_popr_out(stk, st-1, p->data.and.dxs);
+            VPC_FAILURE(r.error);
+          }
+          if(st <  p->data.and.n) VPC_CONTINUE(st+1, p->data.and.xs[st]);
+          if(st == p->data.and.n) {
+              vpc_input_unmark(i); 
+              VPC_SUCCESS(vpc_stack_merger_out(stk, p->data.and.n, p->data.and.f)); 
+          }
+        }
+      
+      default:
+        VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Unknown Parser Type ID!"));
+    }
+  }
+  return vpc_stack_terminate(stk, final);
+}
+
+
+int vpc_parse(const char* filename, const char* string, vpc_parser* p, vpc_result* r){
+  int x;
+  vpc_input* i = vpc_input_new_string(filename, string);
+  x = vpc_parse_input(i, p, r);
+  vpc_input_delete(i);
+  return x;
+}
+
+int vpc_parse_file(const char* filename, FILE* file, vpc_parser* p, vpc_result* r){
+  int x;
+  vpc_input* i = vpc_input_new_file(filename, file);
+  x = vpc_parse_input(i, p, r);
+  vpc_input_delete(i);
+  return x;
+}
+
+int vpc_parse_pipe(const char* filename, FILE* pipe, vpc_parser* p, vpc_result* r){
+  int x;
+  vpc_input* i = vpc_input_new_pipe(filename, pipe);
+  x = vpc_parse_input(i, p, r);
+  vpc_input_delete(i);
+  return x;
+}
+
+int vpc_parse_contents(const char* filename, vpc_parser* p, vpc_result* r){
+  FILE* f = fopen(filename, "rb");
+  int res;
+  
+  if(f == NULL){
+    r->output = NULL;
+    r->error = vpc_err_fail(filename, vpc_state_new(), "Unable to open file!");
+    return 0;
+  }
+  
+  res = vpc_parse_file(filename, f, p, r);
+  fclose(f);
+  return res;
+}
+
+#undef vpc_CONTINUE
+#undef vpc_SUCCESS
+#undef vpc_FAILURE
+#undef vpc_PRIMATIVE

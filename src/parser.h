@@ -66,7 +66,7 @@ typedef vpc_val*(*vpc_ctor)(void);
 
 typedef vpc_val*(*vpc_apply)(vpc_val*);
 typedef vpc_val*(*vpc_apply_to)(vpc_val*,void*);
-typedef vpc_val*(*vpc_fold)(int,vpc_val**);
+typedef vpc_val*(*vpc_fold)(unsigned int,vpc_val**);
 
 /*
 ** Building a Parser

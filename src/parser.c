@@ -3,6 +3,10 @@
 /*
  *  Types and Definitions
  */
+
+/*
+ *  Input type
+ */
 enum {VPC_INPUT_STRING, VPC_INPUT_FILE, VPC_INPUT_PIPE };
 
 typedef struct{
@@ -21,6 +25,160 @@ typedef struct{
 
     char last;
 } vpc_input;
+
+/*
+ *  Parser type
+ */
+
+enum {
+  VPC_TYPE_UNDEFINED = 0,
+  VPC_TYPE_PASS      = 1,
+  VPC_TYPE_FAIL      = 2,
+  VPC_TYPE_LIFT      = 3,
+  VPC_TYPE_LIFT_VAL  = 4,
+  VPC_TYPE_EXPECT    = 5,
+  VPC_TYPE_ANCHOR    = 6,
+  VPC_TYPE_STATE     = 7,
+  
+  VPC_TYPE_ANY       = 8,
+  VPC_TYPE_SINGLE    = 9,
+  VPC_TYPE_ONEOF     = 10,
+  VPC_TYPE_NONEOF    = 11,
+  VPC_TYPE_RANGE     = 12,
+  VPC_TYPE_SATISFY   = 13,
+  VPC_TYPE_STRING    = 14,
+  
+  VPC_TYPE_APPLY     = 15,
+  VPC_TYPE_APPLY_TO  = 16,
+  VPC_TYPE_PREDICT   = 17,
+  VPC_TYPE_NOT       = 18,
+  VPC_TYPE_MAYBE     = 19,
+  VPC_TYPE_MANY      = 20,
+  VPC_TYPE_MANY1     = 21,
+  VPC_TYPE_COUNT     = 22,
+  
+  VPC_TYPE_OR        = 23,
+  VPC_TYPE_AND       = 24
+};
+
+typedef struct{ 
+    char* m; 
+} vpc_pdata_fail;
+
+typedef struct{ 
+    vpc_ctor lf; 
+    void* x; 
+} vpc_pdata_lift;
+
+typedef struct{ 
+    vpc_parser* x; 
+    char* m; 
+} vpc_pdata_expect;
+
+typedef struct{ 
+    int(*f)(char,char); 
+} vpc_pdata_anchor;
+
+typedef struct{ 
+    char x; 
+} vpc_pdata_single;
+
+typedef struct{ 
+    char x; 
+    char y; 
+} vpc_pdata_range;
+
+typedef struct{ 
+    int(*f)(char); 
+} vpc_pdata_satisfy;
+
+typedef struct{ 
+    char* x; 
+} vpc_pdata_string;
+
+typedef struct{ 
+    vpc_parser* x; 
+    vpc_apply f; 
+} vpc_pdata_apply;
+
+typedef struct{ 
+    vpc_parser_t* x; 
+    vpc_apply_to_t f; 
+    void* d; 
+} vpc_pdata_apply_to;
+
+typedef struct{ 
+    vpc_parser* x; 
+} vpc_pdata_predict;
+
+typedef struct{ 
+    vpc_parser* x; 
+    vpc_dtor dx; 
+    vpc_ctor lf; 
+} vpc_pdata_not;
+
+typedef struct{ 
+    int n; 
+    vpc_fold f; 
+    vpc_parser* x; 
+    vpc_dtor dx; 
+} vpc_pdata_repeat;
+
+typedef struct{ 
+    int n; 
+    vpc_parser** xs; 
+} vpc_pdata_or;
+
+typedef struct{ 
+    int n; 
+    vpc_fold f; 
+    vpc_parser_t** xs; 
+    vpc_dtor* dxs; 
+} vpc_pdata_and;
+
+typedef union{
+  vpc_pdata_fail fail;
+  vpc_pdata_lift lift;
+  vpc_pdata_expect expect;
+  vpc_pdata_anchor anchor;
+  vpc_pdata_single single;
+  vpc_pdata_range range;
+  vpc_pdata_satisfy satisfy;
+  vpc_pdata_string string;
+  vpc_pdata_apply apply;
+  vpc_pdata_apply_to apply_to;
+  vpc_pdata_predict predict;
+  vpc_pdata_not not;
+  vpc_pdata_repeat repeat;
+  vpc_pdata_or or;
+  vpc_pdata_and and;
+} vpc_pdata;
+
+struct vpc_parser{
+  char retained;
+  char* name;
+  char type;
+  vpc_pdata data;
+};
+
+/*
+** Stack Type
+*/
+
+typedef struct{
+  int parsers_count;
+  int parsers_slots;
+  mpc_parser_t** parsers;
+  int* states;
+
+  int results_count;
+  int results_slots;
+  vpc_result* results;
+  int* returns;
+  
+  vpc_err* err;
+  
+} vpc_stack;
 
 /*
  *  Static functions
@@ -55,6 +213,7 @@ static vpc_cur_state* vpc_state_copy(vpc_cur_state s){
 /*
  *  Error functions
  */
+
 static vpc_err* vpc_err_new(const char* filename, vpc_cur_state s, const char* expected, char recieved){
     vpc_err* err = malloc(sizeof(vpc_err));
     err->filename = malloc(strlen(filename) + 1);
@@ -311,7 +470,7 @@ static void vpc_input_mark(vpc_input* v) {
     if(v->type == VPC_INPUT_PIPE && v->marks_count == 1) v->buffer = calloc(1, 1);
 }
 
-static void mpc_input_unmark(vpc_input* v){
+static void vpc_input_unmark(vpc_input* v){
     if (v->backtrack != VPC_TRUE) return;
     v->marks_count--;
     v->marks = realloc(v->marks, sizeof(vpc_cur_state) * v->marks_count);
@@ -322,7 +481,140 @@ static void mpc_input_unmark(vpc_input* v){
     }
 }
 
+static void vpc_input_rewind(vpc_input* v){
+  if (v->backtrack < 1) return;
+  
+  v->state = v->marks[v->marks_count-1];
+  v->last  = v->lasts[v->marks_count-1];
+  
+  if (v->type == VPC_INPUT_FILE)
+    fseek(v->file, v->state.pos, SEEK_SET);
+  
+  vpc_input_unmark(v);
+}
 
+static int vpc_input_buffer_in_range(vpc_input* v){
+  return v->state.pos < (long)(strlen(v->buffer) + v->marks[0].pos);
+}
+
+static char vpc_input_buffer_get(mvpc_input* v){
+  return v->buffer[v->state.pos - v->marks[0].pos];
+}
+
+static int vpc_input_terminated(vpc_input* v) {
+  if(v->type == VPC_INPUT_STRING && v->state.pos == (long)strlen(i->string)) return VPC_TRUE;
+  else if(v->type == VPC_INPUT_FILE && feof(v->file)) return VPC_TRUE;
+  else if(v->type == VPC_INPUT_PIPE && feof(v->file)) return VPC_TRUE;
+  return VPC_FALSE;
+}
+
+static char vpc_input_getc(vpc_input* v) {
+  char c = '\0';
+  
+  switch(v->type){
+    case VPC_INPUT_STRING: return i->string[i->state.pos];
+    case VPC_INPUT_FILE: 
+        c = fgetc(i->file); 
+        return c;
+    case VPC_INPUT_PIPE:
+      if(!i->buffer){ 
+          c = getc(i->file); 
+          return c; 
+      }
+      
+      if (i->buffer && mpc_input_buffer_in_range(i)){
+        c = mpc_input_buffer_get(i);
+        return c;
+      }else{
+        c = getc(i->file);
+        return c;
+      }
+    default: return c;
+  }
+}
+
+static char vpc_input_peekc(vpc_input* v){  
+  char c = '\0';
+  
+  switch (v->type){
+    case VPC_INPUT_STRING: return v->string[v->state.pos];
+    case VPC_INPUT_FILE: 
+      c = fgetc(v->file);
+      if(feof(v->file)) return '\0';
+      
+      fseek(v->file, -1, SEEK_CUR);
+      return c;
+    case VPC_INPUT_PIPE:
+      if(!v->buffer){
+        c = getc(v->file);
+        if(feof(v->file)) return '\0'; 
+        ungetc(c, v->file);
+        return c;
+      }
+      
+      if(v->buffer && vpc_input_buffer_in_range(v)){
+        return mpc_input_buffer_get(v);
+      }else{
+        c = getc(v->file);
+        if(feof(v->file)) return '\0';
+        ungetc(c, v->file);
+        return c;
+      }
+    
+    default: return c;
+  }
+}
+
+static int vpc_input_failure(vpc_input* v, char c) {
+  switch(v->type){
+    case VPC_INPUT_STRING: break;
+    case VPC_INPUT_FILE: 
+        fseek(v->file, -1, SEEK_CUR);
+        break;
+    case MPC_INPUT_PIPE:
+      if(!v->buffer){
+          ungetc(c, v->file); 
+          break;
+      }
+      
+      if(v->buffer && vpc_input_buffer_in_range(v)){
+        break;
+      } else {
+        ungetc(c, v->file);
+      }
+    default: break;
+  }
+  return 0;
+}
+
+static int vpc_input_success(vpc_input* v, char c, char **o){
+  if (v->type == VPC_INPUT_PIPE &&
+      v->buffer &&
+      !mpc_input_buffer_in_range(v)){
+    v->buffer = realloc(v->buffer, strlen(v->buffer) + 2);
+    v->buffer[strlen(v->buffer) + 1] = '\0';
+    v->buffer[strlen(v->buffer) + 0] = c;
+  }
+  
+  v->last = c;
+  v->state.pos++;
+  v->state.col++;
+  
+  if(c == '\n'){
+    v->state.col = 0;
+    v->state.row++;
+  }
+  
+  if(o){
+    *o = malloc(2);
+    *o[0] = c;
+    *o[1] = '\0';
+  }
+  
+  return VPC_TRUE;
+}
+
+static int mpc_input_any(mpc_input_t *i, char **o) {}
 
 /*
  *  Exported functions
@@ -391,200 +683,3 @@ char *vpc_err_string(vpc_err *e){
  */
 
 
-int vpc_parse(const char *filename, const char *string, vpc_parser *p, vpc_result *r);
-int vpc_parse_file(const char *filename, FILE *file, vpc_parser *p, vpc_result *r);
-int vpc_parse_pipe(const char *filename, FILE *pipe, vpc_parser *p, vpc_result *r);
-int vpc_parse_contents(const char *filename, vpc_parser *p, vpc_result *r);
-
-vpc_parser *vpc_new(const char *name);
-vpc_parser *vpc_define(vpc_parser *p, vpc_parser *a);
-vpc_parser *vpc_undefine(vpc_parser *p);
-
-void vpc_delete(vpc_parser *p);
-void vpc_cleanup(int n, ...);
-
-vpc_parser *vpc_any(void);
-vpc_parser *vpc_char(char c);
-vpc_parser *vpc_range(char s, char e);
-vpc_parser *vpc_oneof(const char *s);
-vpc_parser *vpc_noneof(const char *s);
-vpc_parser *vpc_satisfy(int(*f)(char));
-vpc_parser *vpc_string(const char *s);
-
-vpc_parser *vpc_pass(void);
-vpc_parser *vpc_fail(const char *m);
-vpc_parser *vpc_failf(const char *fmt, ...);
-vpc_parser *vpc_lift(vpc_ctor f);
-vpc_parser *vpc_lift_val(vpc_val *x);
-vpc_parser *vpc_anchor(int(*f)(char,char));
-vpc_parser *vpc_state(void);
-
-vpc_parser *vpc_expect(vpc_parser *a, const char *e);
-vpc_parser *vpc_expectf(vpc_parser *a, const char *fmt, ...);
-vpc_parser *vpc_parse_apply(vpc_parser *a, vpc_apply f);
-vpc_parser *vpc_parse_apply_to(vpc_parser *a, vpc_apply_to f, void *x);
-
-vpc_parser *vpc_not(vpc_parser *a, vpc_dtor da);
-vpc_parser *vpc_not_lift(vpc_parser *a, vpc_dtor da, vpc_ctor lf);
-vpc_parser *vpc_maybe(vpc_parser *a);
-vpc_parser *vpc_maybe_lift(vpc_parser *a, vpc_ctor lf);
-
-vpc_parser *vpc_many(vpc_fold f, vpc_parser *a);
-vpc_parser *vpc_many1(vpc_fold f, vpc_parser *a);
-vpc_parser *vpc_count(int n, vpc_fold f, vpc_parser *a, vpc_dtor da);
-
-vpc_parser *vpc_or(int n, ...);
-vpc_parser *vpc_and(int n, vpc_fold f, ...);
-
-vpc_parser *vpc_predictive(vpc_parser *a);
-
-vpc_parser *vpc_eoi(void);
-vpc_parser *vpc_soi(void);
-
-vpc_parser *vpc_boundary(void);
-
-vpc_parser *vpc_whitespace(void);
-vpc_parser *vpc_whitespaces(void);
-vpc_parser *vpc_blank(void);
-
-vpc_parser *vpc_newline(void);
-vpc_parser *vpcab(void);
-vpc_parser *vpc_escape(void);
-
-vpc_parser *vpc_digit(void);
-vpc_parser *vpc_hexdigit(void);
-vpc_parser *vpc_octdigit(void);
-vpc_parser *vpc_digits(void);
-vpc_parser *vpc_hexdigits(void);
-vpc_parser *vpc_octdigits(void);
-
-vpc_parser *vpc_lower(void);
-vpc_parser *vpc_upper(void);
-vpc_parser *vpc_alpha(void);
-vpc_parser *vpc_underscore(void);
-vpc_parser *vpc_alphanum(void);
-
-vpc_parser *vpc_int(void);
-vpc_parser *vpc_hex(void);
-vpc_parser *vpc_oct(void);
-vpc_parser *vpc_number(void);
-
-vpc_parser *vpc_real(void);
-vpc_parser *vpc_float(void);
-
-vpc_parser *vpc_char_lit(void);
-vpc_parser *vpc_string_lit(void);
-vpc_parser *vpc_regex_lit(void);
-
-vpc_parser *vpc_ident(void);
-
-vpc_parser *vpc_startwith(vpc_parser *a);
-vpc_parser *vpc_endwith(vpc_parser *a, vpc_dtor da);
-vpc_parser *vpc_whole(vpc_parser *a, vpc_dtor da);
-
-vpc_parser *vpc_stripl(vpc_parser *a);
-vpc_parser *vpc_stripr(vpc_parser *a);
-vpc_parser *vpc_strip(vpc_parser *a);
-vpc_parser *vpcok(vpc_parser *a); 
-vpc_parser *vpc_sym(const char *s);
-vpc_parser *vpcotal(vpc_parser *a, vpc_dtor da);
-
-vpc_parser *vpc_between(vpc_parser *a, vpc_dtor ad, const char *o, const char *c);
-vpc_parser *vpc_parens(vpc_parser *a, vpc_dtor ad);
-vpc_parser *vpc_braces(vpc_parser *a, vpc_dtor ad);
-vpc_parser *vpc_brackets(vpc_parser *a, vpc_dtor ad);
-vpc_parser *vpc_squares(vpc_parser *a, vpc_dtor ad);
-
-vpc_parser *vpcok_between(vpc_parser *a, vpc_dtor ad, const char *o, const char *c);
-vpc_parser *vpcok_parens(vpc_parser *a, vpc_dtor ad);
-vpc_parser *vpcok_braces(vpc_parser *a, vpc_dtor ad);
-vpc_parser *vpcok_brackets(vpc_parser *a, vpc_dtor ad);
-vpc_parser *vpcok_squares(vpc_parser *a, vpc_dtor ad);
-
-void vpcf_dtor_null(vpc_val *x);
-
-vpc_val *vpcf_ctor_null(void);
-vpc_val *vpcf_ctor_str(void);
-
-vpc_val *vpcf_free(vpc_val *x);
-vpc_val *vpcf_int(vpc_val *x);
-vpc_val *vpcf_hex(vpc_val *x);
-vpc_val *vpcf_oct(vpc_val *x);
-vpc_val *vpcf_float(vpc_val *x);
-
-vpc_val *vpcf_escape(vpc_val *x);
-vpc_val *vpcf_escape_regex(vpc_val *x);
-vpc_val *vpcf_escape_string_raw(vpc_val *x);
-vpc_val *vpcf_escape_char_raw(vpc_val *x);
-
-vpc_val *vpcf_unescape(vpc_val *x);
-vpc_val *vpcf_unescape_regex(vpc_val *x);
-vpc_val *vpcf_unescape_string_raw(vpc_val *x);
-vpc_val *vpcf_unescape_char_raw(vpc_val *x);
-
-vpc_val *vpcf_null(int n, vpc_val** xs);
-vpc_val *vpcf_fst(int n, vpc_val** xs);
-vpc_val *vpcf_snd(int n, vpc_val** xs);
-vpc_val *vpcfrd(int n, vpc_val** xs);
-
-vpc_val *vpcf_fst_free(int n, vpc_val** xs);
-vpc_val *vpcf_snd_free(int n, vpc_val** xs);
-vpc_val *vpcfrd_free(int n, vpc_val** xs);
-
-vpc_val *vpcf_strfold(int n, vpc_val** xs);
-vpc_val *vpcf_maths(int n, vpc_val** xs);
-
-vpc_parser *vpc_re(const char *re);
-  
-vpc_ast *vpc_ast_new(const char *tag, const char *contents);
-vpc_ast *vpc_ast_build(int n, const char *tag, ...);
-vpc_ast *vpc_ast_add_root(vpc_ast *a);
-vpc_ast *vpc_ast_add_child(vpc_ast *r, vpc_ast *a);
-vpc_ast *vpc_ast_addag(vpc_ast *a, const char *t);
-vpc_ast *vpc_astag(vpc_ast *a, const char *t);
-vpc_ast *vpc_ast_state(vpc_ast *a, vpc_cur_state s);
-
-void vpc_ast_delete(vpc_ast *a);
-void vpc_ast_print(vpc_ast *a);
-void vpc_ast_printo(vpc_ast *a, FILE *fp);
-
-int vpc_ast_eq(vpc_ast *a, vpc_ast *b);
-
-vpc_val *vpcf_fold_ast(int n, vpc_val **as);
-vpc_val *vpcf_str_ast(vpc_val *c);
-vpc_val *vpcf_state_ast(int n, vpc_val **xs);
-
-vpc_parser *vpcaag(vpc_parser *a, const char *t);
-vpc_parser *vpca_addag(vpc_parser *a, const char *t);
-vpc_parser *vpca_root(vpc_parser *a);
-vpc_parser *vpca_state(vpc_parser *a);
-vpc_parser *vpcaotal(vpc_parser *a);
-
-vpc_parser *vpca_not(vpc_parser *a);
-vpc_parser *vpca_maybe(vpc_parser *a);
-
-vpc_parser *vpca_many(vpc_parser *a);
-vpc_parser *vpca_many1(vpc_parser *a);
-vpc_parser *vpca_count(int n, vpc_parser *a);
-
-vpc_parser *vpca_or(int n, ...);
-vpc_parser *vpca_and(int n, ...);
-
-vpc_parser *vpca_grammar(int flags, const char *grammar, ...);
-
-vpc_err *vpca_lang(int flags, const char *language, ...);
-vpc_err *vpca_lang_file(int flags, FILE *f, ...);
-vpc_err *vpca_lang_pipe(int flags, FILE *f, ...);
-vpc_err *vpca_lang_contents(int flags, const char *filename, ...);
-
-void vpc_print(vpc_parser *p);
-
-int vpc_test_pass(vpc_parser *p, const char *s, const void *d,
-  int(*tester)(const void*, const void*), 
-  vpc_dtor destructor, 
-  void(*printer)(const void*));
-
-int vpc_test_fail(vpc_parser *p, const char *s, const void *d,
-  int(*tester)(const void*, const void*),
-  vpc_dtor destructor,
-  void(*printer)(const void*));

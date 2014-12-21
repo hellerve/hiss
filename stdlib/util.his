@@ -1,9 +1,15 @@
 (def {nil} {})
 
+
+(fun {len l} {
+      if(== l {})
+              {0}
+              {+ 1 (len (tail l))}})
+
 (fun {do & l} { 
     if(== l {})
-    {nil}
-    {last l}})
+        {nil}
+        {last l}})
 
 (fun {reverse l} {
     if(== l {})

@@ -1,18 +1,9 @@
-def {fun}(
+(def {fun}(
     lambda {args body} 
         {def (head args) 
-            (lambda 
-                (tail args) body)})
+            (lambda(tail args) body)}))
 
-fun {curry f xs} {
-    eval 
-        (join 
-            (list f) xs)}
+(fun {curry f xs} {
+    eval(join(list f) xs)})
 
-fun {uncurry f & args} {f xs}
-
-fun {len l} {
-      if(== l {})
-              {0}
-              {+ 1 (len (tail l))}}
-
+(fun {uncurry f & args} {f xs})

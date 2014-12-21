@@ -66,6 +66,8 @@ static inline void print_header(){
 int repl(){
     vpc_parser* number = vpc_new("number");
     vpc_parser* symbol = vpc_new("symbol");
+    vpc_parser* string = vpc_new("string");
+    vpc_parser* comment = vpc_new("comment");
     vpc_parser* s_expression  = vpc_new("s_expression");
     vpc_parser* q_expression  = vpc_new("q_expression");
     vpc_parser* expression   = vpc_new("expression");
@@ -75,12 +77,15 @@ int repl(){
         "                                                             \
             number        : /-?[0-9]+/ ;                              \
             symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/          \
+            string        : /\"(\\\\.|[^\"])*\"/ ;                    \
+            comment       : /#[^\\r\\n]*/ ;                           \
             s_expression  : '(' <expr>* ')' ;                         \
             q_expression  : '{' <expr>* '}' ;                         \
             expression    : <number> | <symbol> | <sexpr> | <qexpr> ; \
-        hiss          : /^/ <expr>* /$/ ;                             \
+            hiss          : /^/ <expr>* /$/ ;                         \
         ",
-    number, symbol, s_expression, q_expression, expression, hiss);
+    number, symbol, string, comment, s_expression, q_expression, 
+    expression, hiss);
     
     hiss_env* e = hiss_env_new();
     hiss_env_add_builtins(e);
@@ -113,7 +118,8 @@ int repl(){
 
     hiss_env_del(e);
     
-    vpc_cleanup(6, number, symbol, s_expression, q_expression, expression, hiss);
+    vpc_cleanup(6, number, symbol, string, comment, s_expression, 
+                q_expression, expression, hiss);
 
     return 0;
 }

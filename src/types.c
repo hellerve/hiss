@@ -55,6 +55,14 @@ hiss_val* hiss_val_sym(const char* s){
     return val;
 }
 
+hiss_val* hiss_val_str(const char* s){
+    hiss_val* val = malloc(sizeof(hiss_val));
+    val->type = HISS_STR;
+    val->str = malloc(strlen(s) + 1);
+    strcpy(val->str, s);
+    return val;
+}
+
 hiss_val* hiss_val_fun(hiss_builtin fun) {
   hiss_val* val = malloc(sizeof(hiss_val));
   val->type = HISS_FUN;
@@ -135,10 +143,26 @@ hiss_val* hiss_val_read_num(vpc_ast* t){
     return errno != ERANGE ? hiss_val_num(n) : hiss_err((char *)"Invalid number.");
 }
 
+static hiss_val* hiss_val_read_str(vpc_ast* t){
+    char* unescaped = NULL;
+    hiss_val* str = NULL;
+    
+    t->contents[strlen(t->contents)-1] = '\0';
+    
+    unescaped = malloc(strlen(t->contents+1)+1);
+    strcpy(unescaped, t->contents+1);
+    unescaped = vpcf_unescape(unescaped);
+    str = hiss_val_str(unescaped);
+    
+    free(unescaped);
+    return str;
+}
+
 hiss_val* hiss_val_read(vpc_ast* t){
     unsigned int i;
     hiss_val* v = NULL;
     if(strstr(t->tag, "number")) return hiss_val_read_num(t);
+    if(strstr(t->tag, "string")) return hiss_val_read_str(t);
     if(strstr(t->tag, "symbol")) return hiss_val_sym(t->contents);
     if(strstr(t->tag, "qexpr")) v = hiss_val_qexpr();
 
@@ -150,6 +174,7 @@ hiss_val* hiss_val_read(vpc_ast* t){
         else if(strcmp(t->children[i]->contents, "}") == 0) continue;
         else if(strcmp(t->children[i]->contents, "{") == 0) continue; 
         else if(strcmp(t->children[i]->tag,  "regex") == 0) continue;
+        else if(strstr(t->children[i]->tag, "comment")) continue;
         v = hiss_val_add(v, hiss_val_read(t->children[i]));
     }
 
@@ -169,9 +194,20 @@ static void hiss_val_expr_print(hiss_val* v, const char open, const char close){
     putchar(close);
 }
 
+static void hiss_val_print_str(hiss_val* v){
+    char* escaped = malloc(strlen(v->str)+1);
+    strcpy(escaped, v->str);
+
+    escaped = vpcf_escape(escaped);
+    printf("\"%s\"", escaped);
+
+    free(escaped);
+}
+
 void hiss_val_print(hiss_val* val){
     switch(val->type){
         case HISS_NUM: printf("%li", val->num); break;
+        case HISS_STR: hiss_val_print_str(val); break;
         case HISS_BOOL: val->num == HISS_TRUE ? printf("true") : printf("false"); break;
         case HISS_ERR: printf("%s Error: %s", HISS_ERR_TOKEN, val->err); break;
         case HISS_SYM: printf("%s", val->sym); break;
@@ -212,6 +248,7 @@ void hiss_val_del(hiss_val* val){
     switch(val->type){
         case HISS_BOOL:
         case HISS_NUM: break;
+        case HISS_STR: free(val->str); break;
         case HISS_ERR: free(val->err); break;
         case HISS_SYM: free(val->sym); break;
         case HISS_QEXPR:
@@ -381,6 +418,7 @@ static hiss_val* hiss_val_eq(hiss_val* x, hiss_val* y){
 
   switch (x->type){
     case HISS_NUM: return hiss_val_bool(x->num == y->num);
+    case HISS_STR: return hiss_val_bool(!(strcmp(x->str, y->str) == 0));
     case HISS_ERR: return hiss_val_bool(strcmp(x->err, y->err) == 0);
     case HISS_SYM: return hiss_val_bool(strcmp(x->sym, y->sym) == 0);
     case HISS_FUN:
@@ -502,6 +540,10 @@ hiss_val* hiss_val_copy(hiss_val* val){
         }
         break;
     case HISS_NUM: c->num = val->num; break;
+    case HISS_STR: 
+        c->str = malloc(strlen(val->str + 1)); 
+        strcpy(c->str, val->str);
+        break;
     case HISS_BOOL: c->boolean = val->boolean; break;
     case HISS_ERR:
       c->err = malloc(strlen(val->err) + 1);
@@ -717,6 +759,7 @@ void hiss_env_add_builtins(hiss_env* e){
 const char* hiss_type_name(int t){
     switch(t){
         case HISS_FUN: return "Function";
+        case HISS_STR: return "String";
         case HISS_BOOL: return "Boolean";
         case HISS_NUM: return "Number";
         case HISS_ERR: return "Error";

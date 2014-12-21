@@ -31,7 +31,7 @@ fun {in l e} {
         {false}
         {(if(== e (head l)))
             {true}
-            {(in l e)}}}
+            {(in (tail l) e)}}}
 
 fun {last l} {
     if(== 1 (len l))

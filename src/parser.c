@@ -676,6 +676,55 @@ static int vpc_input_anchor(vpc_input* v, int(*f)(char,char)){
 }
 
 /*
+ *  Static functions
+ */
+
+static vpc_stack* vpc_stack_new(const char* filename){
+  vpc_stack* s = malloc(sizeof(vpc_stack));
+  
+  s->parsers_count = 0;
+  s->parsers_slots = 0;
+  s->parsers = NULL;
+  s->states = NULL;
+  
+  s->results_count = 0;
+  s->results_slots = 0;
+  s->results = NULL;
+  s->returns = NULL;
+  
+  s->err = vpc_err_fail(filename, vpc_state_invalid(), "Unknown Error");
+  
+  return s;
+}
+
+static void vpc_stack_err(vpc_stack* s, vpc_err* e){
+  vpc_err* errs[2];
+  errs[0] = s->err;
+  errs[1] = e;
+  s->err = vpc_err_or(errs, 2);
+}
+
+static int vpc_stack_terminate(vpc_stack* s, vpc_result* r){
+  int success = s->returns[0];
+  
+  if(success){
+    r->output = s->results[0].output;
+    vpc_err_delete(s->err);
+  } else {
+    vpc_stack_err(s, s->results[0].error);
+    r->error = s->err;
+  }
+  
+  free(s->parsers);
+  free(s->states);
+  free(s->results);
+  free(s->returns);
+  free(s);
+  
+  return success;
+}
+
+/*
  *  Exported functions
  */
 

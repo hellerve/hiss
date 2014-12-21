@@ -381,10 +381,10 @@ static vpc_err *vpc_err_count(vpc_err* e, unsigned int n){
 }
 
 /*
- * Inpu functions
+ * Input functions
  */
 
-static vpc_input* mpc_input_new_string(const char*filename, const char* string){
+static vpc_input* vpc_input_new_string(const char*filename, const char* string){
     vpc_input* v = malloc(sizeof(vpc_input));
     v->filename = malloc(strlen(filename) + 1);
     strcpy(v->filename, filename);
@@ -614,7 +614,66 @@ static int vpc_input_success(vpc_input* v, char c, char **o){
   return VPC_TRUE;
 }
 
-static int vpc_input_any(vpc_input* i, char **o) {return 0;}
+static int vpc_input_any(vpc_input* v, char** o){
+  char x = vpc_input_getc(v);
+  if(vpc_input_terminated(v)) return 0;
+  return vpc_input_success(v, x, o);
+}
+
+static int vpc_input_char(vpc_input* v, char c, char** o){
+  char x = vpc_input_getc(v);
+  if(vpc_input_terminated(v)) return 0;
+  return x == c ? vpc_input_success(v, x, o) : vpc_input_failure(v, x);
+}
+
+static int vpc_input_range(vpc_input* v, char c, char d, char** o){
+  char x = vpc_input_getc(v);
+  if(vpc_input_terminated(v)) return 0;
+  return x >= c && x <= d ? vpc_input_success(v, x, o) : vpc_input_failure(v, x);  
+}
+
+static int vpc_input_oneof(vpc_input* v, const char* c, char** o){
+  char x = vpc_input_getc(v);
+  if(vpc_input_terminated(v)) return 0;
+  return strchr(c, x) != 0 ? vpc_input_success(v, x, o) : vpc_input_failure(v, x);  
+}
+
+static int vpc_input_noneof(vpc_input* v, const char* c, char** o){
+  char x = vpc_input_getc(v);
+  if(vpc_input_terminated(v)) return 0;
+  return strchr(c, x) == 0 ? vpc_input_success(v, x, o) : vpc_input_failure(v, x);  
+}
+
+static int vpc_input_satisfy(vpc_input* v, int(*cond)(char), char** o){
+  char x = vpc_input_getc(v);
+  if(vpc_input_terminated(v)) return 0;
+  return cond(x) ? vpc_input_success(v, x, o) : vpc_input_failure(v, x);  
+}
+
+static int vpc_input_string(vpc_input* v, const char* c, char** o){
+  char* co = NULL;
+  const char* x = c;
+
+  vpc_input_mark(v);
+  while(*x){
+    if (vpc_input_char(v, *x, &co)){
+      free(co);
+    } else {
+      vpc_input_rewind(v);
+      return VPC_FALSE;
+    }
+    x++;
+  }
+  vpc_input_unmark(v);
+  
+  *o = malloc(strlen(c) + 1);
+  strcpy(*o, c);
+  return VPC_TRUE;
+}
+
+static int vpc_input_anchor(vpc_input* v, int(*f)(char,char)){
+  return f(v->last, vpc_input_peekc(v));
+}
 
 /*
  *  Exported functions

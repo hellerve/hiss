@@ -102,8 +102,8 @@ typedef struct{
 } vpc_pdata_apply;
 
 typedef struct{ 
-    vpc_parser_t* x; 
-    vpc_apply_to_t f; 
+    vpc_parser* x; 
+    vpc_apply_to f; 
     void* d; 
 } vpc_pdata_apply_to;
 
@@ -132,7 +132,7 @@ typedef struct{
 typedef struct{ 
     int n; 
     vpc_fold f; 
-    vpc_parser_t** xs; 
+    vpc_parser** xs; 
     vpc_dtor* dxs; 
 } vpc_pdata_and;
 
@@ -168,7 +168,7 @@ struct vpc_parser{
 typedef struct{
   int parsers_count;
   int parsers_slots;
-  mpc_parser_t** parsers;
+  vpc_parser** parsers;
   int* states;
 
   int results_count;
@@ -494,15 +494,15 @@ static void vpc_input_rewind(vpc_input* v){
 }
 
 static int vpc_input_buffer_in_range(vpc_input* v){
-  return v->state.pos < (long)(strlen(v->buffer) + v->marks[0].pos);
+  return v->state.pos < (long)(v->marks[0].pos + (long)strlen(v->buffer));
 }
 
-static char vpc_input_buffer_get(mvpc_input* v){
+static char vpc_input_buffer_get(vpc_input* v){
   return v->buffer[v->state.pos - v->marks[0].pos];
 }
 
 static int vpc_input_terminated(vpc_input* v) {
-  if(v->type == VPC_INPUT_STRING && v->state.pos == (long)strlen(i->string)) return VPC_TRUE;
+  if(v->type == VPC_INPUT_STRING && v->state.pos == (long)strlen(v->string)) return VPC_TRUE;
   else if(v->type == VPC_INPUT_FILE && feof(v->file)) return VPC_TRUE;
   else if(v->type == VPC_INPUT_PIPE && feof(v->file)) return VPC_TRUE;
   return VPC_FALSE;
@@ -512,21 +512,21 @@ static char vpc_input_getc(vpc_input* v) {
   char c = '\0';
   
   switch(v->type){
-    case VPC_INPUT_STRING: return i->string[i->state.pos];
+    case VPC_INPUT_STRING: return v->string[v->state.pos];
     case VPC_INPUT_FILE: 
-        c = fgetc(i->file); 
+        c = (char) fgetc(v->file); 
         return c;
     case VPC_INPUT_PIPE:
-      if(!i->buffer){ 
-          c = getc(i->file); 
+      if(!v->buffer){ 
+          c = (char) getc(v->file); 
           return c; 
       }
       
-      if (i->buffer && mpc_input_buffer_in_range(i)){
-        c = mpc_input_buffer_get(i);
+      if(v->buffer && vpc_input_buffer_in_range(v)){
+        c = vpc_input_buffer_get(v);
         return c;
       }else{
-        c = getc(i->file);
+        c = (char) getc(v->file);
         return c;
       }
     default: return c;
@@ -539,23 +539,23 @@ static char vpc_input_peekc(vpc_input* v){
   switch (v->type){
     case VPC_INPUT_STRING: return v->string[v->state.pos];
     case VPC_INPUT_FILE: 
-      c = fgetc(v->file);
+      c = (char) fgetc(v->file);
       if(feof(v->file)) return '\0';
       
       fseek(v->file, -1, SEEK_CUR);
       return c;
     case VPC_INPUT_PIPE:
       if(!v->buffer){
-        c = getc(v->file);
+        c = (char) getc(v->file);
         if(feof(v->file)) return '\0'; 
         ungetc(c, v->file);
         return c;
       }
       
       if(v->buffer && vpc_input_buffer_in_range(v)){
-        return mpc_input_buffer_get(v);
+        return vpc_input_buffer_get(v);
       }else{
-        c = getc(v->file);
+        c = (char) getc(v->file);
         if(feof(v->file)) return '\0';
         ungetc(c, v->file);
         return c;
@@ -571,7 +571,7 @@ static int vpc_input_failure(vpc_input* v, char c) {
     case VPC_INPUT_FILE: 
         fseek(v->file, -1, SEEK_CUR);
         break;
-    case MPC_INPUT_PIPE:
+    case VPC_INPUT_PIPE:
       if(!v->buffer){
           ungetc(c, v->file); 
           break;
@@ -590,7 +590,7 @@ static int vpc_input_failure(vpc_input* v, char c) {
 static int vpc_input_success(vpc_input* v, char c, char **o){
   if (v->type == VPC_INPUT_PIPE &&
       v->buffer &&
-      !mpc_input_buffer_in_range(v)){
+      !vpc_input_buffer_in_range(v)){
     v->buffer = realloc(v->buffer, strlen(v->buffer) + 2);
     v->buffer[strlen(v->buffer) + 1] = '\0';
     v->buffer[strlen(v->buffer) + 0] = c;
@@ -614,7 +614,7 @@ static int vpc_input_success(vpc_input* v, char c, char **o){
   return VPC_TRUE;
 }
 
-static int mpc_input_any(mpc_input_t *i, char **o) {}
+static int vpc_input_any(vpc_input* i, char **o) {return 0;}
 
 /*
  *  Exported functions

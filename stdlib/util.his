@@ -1,22 +1,56 @@
-fun {reverse l} {
+(def {nil} {})
+
+(fun {do & l} { 
+    if(== l {})
+    {nil}
+    {last l}})
+
+(fun {reverse l} {
     if(== l {})
         {{}}
-        {join (reverse (tail l)) (head l)}}
+        {join (reverse (tail l)) (head l)}})
 
-fun {at l i} {
+(fun {at l i} {
     if(== i 0)
          {(head l)}
-         {(at (tail l)(+ 1 i))}}
+         {(at (tail l)(+ 1 i))}})
 
-fun {in l e} {
+(fun {in l e} {
     if(== l {})
         {false}
         {(if(== e (head l)))
             {true}
-            {(in (tail l) e)}}}
+            {(in (tail l) e)}}})
 
-fun {last l} {
-    if(== 1 (len l))
-        {(head l)}
-        {(last (tail l)}}
+(fun {last l} { {nth (- (len l) 1) l})
 
+(fun {select & cs} {
+    if (== cs {})
+        {error "No Selection Found"}
+        {if (fst (fst cs)) {snd (fst cs)} {unpack select (tail cs)}}})
+
+(fun {case x & cs} {
+    if (== cs {})
+        {error "No Case Found"}
+        {if (== x (fst (fst cs))) {snd (fst cs)} {unpack case (join (list x) (tail cs))}}}) 
+
+(fun {map f l} {
+    if(== l {})
+        {nil}
+        {join (if (f (head l)) {head l} {nil}) (filter f(tail l))}})
+
+(fun {foldl f z l} {
+    if (== l {})
+    {z}
+    {foldl f (f z (fst l)) (tail l)}
+})
+
+(fun {foldr f z l} {
+    if (== l {})
+    {z}
+    {f (fst l) (foldr f z (tail l))}
+})
+
+(fun {sum l} {foldl + 0 l})
+
+(fun {product l} {foldl * 1 l})

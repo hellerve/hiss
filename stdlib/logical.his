@@ -1,19 +1,6 @@
-fun {or x y} {
-    if(x)
-        {true}
-        {if(y)
-            {true}
-            {false}}}
+(fun {or x y} {+ x y})
 
-fun {and x y} {
-    if(x)
-        {if(y)
-            {true}
-            {false}}
-        {false}}
+(fun {and x y} {* x y})
 
-fun {not x} {
-    if(x)
-        {false}
-        {true}}
+(fun {not x} {- 1 x})
 

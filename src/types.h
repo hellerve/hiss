@@ -7,10 +7,6 @@
 #include "parser.h"
 #include "util.h"
 
-
-#define HISS_ASSERT(args, cond, err) \
-  if (!(cond)) { hiss_val_del(args); return hiss_err(err); }
-
 enum {HISS_ERR, HISS_NUM, HISS_SYM, HISS_FUN, HISS_SEXPR, HISS_QEXPR};
 
 enum {HISS_ZERO_DIV, HISS_BAD_OP, HISS_BAD_NUM};
@@ -27,11 +23,15 @@ struct hiss_val {
     char* err;
     char* sym;
     hiss_builtin fun;
+    hiss_env* env;
+    hiss_val* formals;
+    hiss_val* body;
     unsigned int count;
     struct hiss_val** cells;
 };
 
 struct hiss_env {
+  hiss_env* par;
   unsigned int count;
   char** syms;
   hiss_val** vals;
@@ -46,9 +46,10 @@ hiss_env* hiss_env_new();
 hiss_val* hiss_val_num(long n);
 hiss_val* hiss_val_sym(const char* s);
 hiss_val* hiss_val_fun(hiss_builtin fun);
+hiss_val* hiss_val_lambda(hiss_val* formals, hiss_val* body);
 hiss_val* hiss_val_sexpr();
 hiss_val* hiss_val_qexpr();
-hiss_val* hiss_err(const char* m);
+hiss_val* hiss_err(const char* fmt, ...);
 
 /*
  * Helper functions

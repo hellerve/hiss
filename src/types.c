@@ -1,7 +1,30 @@
 #include "types.h"
 
+#define HISS_ASSERT(args, cond, fmt, ...) \
+  if (!(cond)) { hiss_val* err = hiss_err(fmt, __VA_ARGS__); hiss_val_del(args); return err;}
+
+#define HISS_ASSERT_TYPE(fun, args, index, expect) \
+  HISS_ASSERT(args, args->cells[index]->type == expect, \
+    "Function '%s' passed incorrect type for argument %i. " \
+    "Got %s, expected %s.", \
+    fun, index, hiss_type_name(args->cells[index]->type), hiss_type_name(expect))
+
+#define HISS_ASSERT_NUM(fun, args, num) \
+  HISS_ASSERT(args, args->count == num, \
+    "Function '%s' passed incorrect number of arguments. " \
+    "Got %i, expected %i.", \
+    fun, args->count, num)
+
+#define HISS_ASSERT_NOT_EMPTY(fun, args, index) \
+  HISS_ASSERT(args, args->cells[index]->count != 0, \
+    "Function '%s' passed {} for argument %i.", fun, index);
+
+static hiss_val* hiss_val_call(hiss_env* e, hiss_val* f, hiss_val* a);
+const char* hiss_type_name(int t);
+
 hiss_env* hiss_env_new(){
   hiss_env* e = malloc(sizeof(hiss_env));
+  e->par = NULL;
   e->count = 0;
   e->syms = NULL;
   e->vals = NULL;
@@ -46,11 +69,27 @@ hiss_val* hiss_val_qexpr(){
   return v;
 }
 
-hiss_val* hiss_err(const char* m){
+hiss_val* hiss_val_lambda(hiss_val* formals, hiss_val* body){
+  hiss_val* v = malloc(sizeof(hiss_val));
+  v->type = HISS_FUN;
+  v->fun = NULL;
+  v->env = hiss_env_new();
+  v->formals = formals;
+  v->body = body;
+  return v;  
+}
+
+hiss_val* hiss_err(const char* fmt, ...){
     hiss_val* val = malloc(sizeof(hiss_val));
+    va_list va;
+    va_start(va, fmt);
     val->type = HISS_ERR;
-    val->err = malloc(strlen(m) + 1);
-    strcpy(val->sym, m);
+    val->err = malloc(512);
+    
+    vsnprintf(val->err, 511, fmt, va);
+
+    val->err = realloc(val->err, strlen(val->err)+1);
+
     return val;
 }
 
@@ -61,10 +100,30 @@ hiss_val* hiss_val_add(hiss_val* v, hiss_val* a){
     return v;
 }
 
+hiss_env* hiss_env_copy(hiss_env* e){
+    int i;
+    hiss_env* n = malloc(sizeof(hiss_env));
+    n->par = e->par;
+    n->count = e->count;
+    n->syms = malloc(sizeof(char*) * n->count);
+    n->vals = malloc(sizeof(hiss_val*) * n->count);
+    for(i = 0; i < e->count; i++){
+        n->syms[i] = malloc(strlen(e->syms[i]) + 1);
+        strcpy(n->syms[i], e->syms[i]);
+        n->vals[i] = hiss_val_copy(e->vals[i]);
+    }
+    return n;
+}
+
+static void hiss_env_def(hiss_env* e, hiss_val* k, hiss_val* v){
+    while(e->par) e = e->par;
+    hiss_env_put(e, k, v);
+}
+
 hiss_val* hiss_val_read_num(vpc_ast* t){
     long n = strtol(t->contents, NULL, 10);
     errno = 0;
-    return errno != ERANGE ? hiss_val_num(n) : hiss_err((char *)"Invalid number");
+    return errno != ERANGE ? hiss_val_num(n) : hiss_err((char *)"Invalid number.");
 }
 
 hiss_val* hiss_val_read(vpc_ast* t){
@@ -88,8 +147,6 @@ hiss_val* hiss_val_read(vpc_ast* t){
       return v;
 }
 
-void hiss_val_print(hiss_val* val);
-
 static void hiss_val_expr_print(hiss_val* v, const char open, const char close){
     unsigned int i;
     putchar(open);
@@ -108,9 +165,19 @@ void hiss_val_print(hiss_val* val){
         case HISS_NUM: printf("%li", val->num); break;
         case HISS_ERR: printf("%s Error: %s", HISS_ERR_TOKEN, val->err); break;
         case HISS_SYM: printf("%s", val->sym); break;
-        case HISS_FUN: printf("<function>"); break;
         case HISS_SEXPR: hiss_val_expr_print(val, '(', ')'); break;
         case HISS_QEXPR: hiss_val_expr_print(val, '{', '}'); break;
+        case HISS_FUN: 
+            if(val->fun){
+                printf("<function>"); 
+            }else {
+                printf("(\\ ");
+                hiss_val_print(val->formals);
+                putchar(' ');
+                hiss_val_print(val->body);
+                putchar(')');
+            }
+            break;
     }
 }
 
@@ -138,12 +205,18 @@ void hiss_val_del(hiss_val* val){
         case HISS_SYM: free(val->sym); break;
         case HISS_QEXPR:
         case HISS_SEXPR:
-            for(i = 0; i < val->count; i++){
+            for(i = 0; i < val->count; i++)
                 hiss_val_del(val->cells[i]);
-            }
             free(val->cells);
             break;
-        case HISS_FUN: break;
+        case HISS_FUN:
+            if(!val->fun){
+                hiss_env_del(val->env);
+                hiss_val_del(val->formals);
+                hiss_val_del(val->body);
+            }
+            break;
+
     }
     free(val);
 }
@@ -206,9 +279,9 @@ static hiss_val* builtin_op(hiss_env*e, hiss_val* a, const char* op){
 
 static hiss_val* builtin_head(hiss_env* e, hiss_val* a){    
   hiss_val* val = NULL;
-  HISS_ASSERT(a, a->count == 1, "Function 'head' passed too many arguments!");
-  HISS_ASSERT(a, a->cells[0]->type == HISS_QEXPR, "Function 'head' passed incorrect type!");
-  HISS_ASSERT(a, a->cells[0]->count != 0, "Function 'head' passed {}!");
+  HISS_ASSERT_NUM("head", a, 1);
+  HISS_ASSERT_TYPE("head", a, 0, HISS_QEXPR);
+  HISS_ASSERT_NOT_EMPTY("head", a, 0);
 
   val = hiss_val_take(a, 0);
   while(val->count > 1) hiss_val_del(hiss_val_pop(val, 1));
@@ -217,9 +290,9 @@ static hiss_val* builtin_head(hiss_env* e, hiss_val* a){
 
 static hiss_val* builtin_tail(hiss_env* e, hiss_val* a){
   hiss_val* val = NULL;
-  HISS_ASSERT(a, a->count == 1, "Function 'tail' passed too many arguments!");
-  HISS_ASSERT(a, a->cells[0]->type == HISS_QEXPR, "Function 'tail' passed incorrect type!");
-  HISS_ASSERT(a, a->cells[0]->count != 0, "Function 'tail' passed {}!");
+  HISS_ASSERT_NUM("tail", a, 1);
+  HISS_ASSERT_TYPE("tail", a, 0, HISS_QEXPR);
+  HISS_ASSERT_NOT_EMPTY("tail", a, 0);
 
   val = hiss_val_take(a, 0);  
   hiss_val_del(hiss_val_pop(val, 0));
@@ -233,10 +306,8 @@ static hiss_val* builtin_list(hiss_env* e, hiss_val* a) {
 
 static hiss_val* builtin_eval(hiss_env* e, hiss_val* a){
   hiss_val* x = NULL;
-  HISS_ASSERT(a, a->count == 1,
-    "Function 'eval' passed too many arguments!");
-  HISS_ASSERT(a, a->cells[0]->type == HISS_QEXPR,
-    "Function 'eval' passed incorrect type!");
+  HISS_ASSERT_NUM("eval", a, 1);
+  HISS_ASSERT_TYPE("eval", a, 0, HISS_QEXPR);
 
   x = hiss_val_take(a, 0);
   x->type = HISS_SEXPR;
@@ -256,8 +327,7 @@ static hiss_val* builtin_join(hiss_env*e, hiss_val* a) {
   hiss_val* x;
     
   for (i = 0; i < a->count; i++)
-    HISS_ASSERT(a, a->cells[i]->type == HISS_QEXPR,
-      "Function 'join' passed incorrect type.");
+    HISS_ASSERT_TYPE("join", a, 0, HISS_QEXPR);
 
   x = hiss_val_pop(a, 0);
 
@@ -274,7 +344,16 @@ hiss_val* hiss_val_copy(hiss_val* val){
   c->type = val->type;
   
   switch (val->type) {
-    case HISS_FUN: c->fun = val->fun; break;
+    case HISS_FUN:
+        if(val->fun){
+            c->fun = val->fun;
+        }else{
+            c->fun = NULL;
+            c->env = hiss_env_copy(val->env);
+            c->formals = hiss_val_copy(val->formals);
+            c->body = hiss_val_copy(val->body);
+        }
+        break;
     case HISS_NUM: c->num = val->num; break;
     case HISS_ERR:
       c->err = malloc(strlen(val->err) + 1);
@@ -301,8 +380,11 @@ hiss_val* hiss_env_get(hiss_env* e, hiss_val* k){
   for(i = 0; i < e->count; i++)
     if (strcmp(e->syms[i], k->sym) == 0)
       return hiss_val_copy(e->vals[i]);
- 
-  return hiss_err("unbound symbol!");
+
+  if(e->par)
+      return hiss_env_get(e->par, k);
+  
+  return hiss_err("unbound symbol: %s", k->sym);
 }
 
 void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
@@ -336,41 +418,104 @@ hiss_val* hiss_val_eval(hiss_env* e, hiss_val* v){
 
 hiss_val* hiss_val_eval_sexpr(hiss_env* e, hiss_val* v){
   unsigned int i;
+  hiss_val* f = NULL;
+  hiss_val* err = NULL;
+
   for(i = 0; i < v->count; i++)
     v->cells[i] = hiss_val_eval(e, v->cells[i]);
   
   for(i = 0; i < v->count; i++)
     if(v->cells[i]->type == HISS_ERR) return hiss_val_take(v, i);
 
-  if(v->count == 0) { return v; }  
-  if(v->count == 1) { return hiss_val_take(v, 0); }
+  if(v->count == 0) return v; 
+  if(v->count == 1) return hiss_val_take(v, 0);
 
-  hiss_val* f = hiss_val_pop(v, 0);
+  f = hiss_val_pop(v, 0);
   if(f->type != HISS_FUN){
+    err = hiss_err("S-Expression starts with incorrect type. Got %s, expected %s.",
+                   hiss_type_name(f->type), hiss_type_name(HISS_FUN));
     hiss_val_del(v); 
     hiss_val_del(f);
-    return hiss_err("first element is not a function");
+    return err;
   }
 
-  hiss_val* result = f->fun(e, v);
+  hiss_val* result = hiss_val_call(e, f, v);
   hiss_val_del(f);
   return result;
 }
 
-hiss_val* builtin_add(hiss_env* e, hiss_val* a){
+static hiss_val* builtin_add(hiss_env* e, hiss_val* a){
   return builtin_op(e, a, "+");
 }
 
-hiss_val* builtin_sub(hiss_env* e, hiss_val* a){
+static hiss_val* builtin_sub(hiss_env* e, hiss_val* a){
   return builtin_op(e, a, "-");
 }
 
-hiss_val* builtin_mul(hiss_env* e, hiss_val* a){
+static hiss_val* builtin_mul(hiss_env* e, hiss_val* a){
   return builtin_op(e, a, "*");
 }
 
-hiss_val* builtin_div(hiss_env* e, hiss_val* a){
+static hiss_val* builtin_div(hiss_env* e, hiss_val* a){
   return builtin_op(e, a, "/");
+}
+
+static hiss_val* builtin_lambda(hiss_env* e, hiss_val* a){
+  int i;
+  hiss_val* formals = NULL;
+  hiss_val* body = NULL;
+
+  HISS_ASSERT_NUM("defun", a, 2);
+  HISS_ASSERT_TYPE("defun", a, 0, HISS_QEXPR);
+  HISS_ASSERT_TYPE("defun", a, 1, HISS_QEXPR);
+  
+  for (i = 0; i < a->cells[0]->count; i++)
+    HISS_ASSERT(a, (a->cells[0]->cells[i]->type == HISS_SYM),
+      "Cannot define non-symbol. Got %s, Expected %s.",
+      hiss_type_name(a->cells[0]->cells[i]->type), hiss_type_name(HISS_SYM));
+  
+  formals = hiss_val_pop(a, 0);
+  body = hiss_val_pop(a, 0);
+  hiss_val_del(a);
+  
+  return hiss_val_lambda(formals, body);
+}
+
+static hiss_val* builtin_var(hiss_env* e, hiss_val* a, const char* fun){
+    int i;
+    int def = strcmp(fun, "def");
+    int equals = strcmp(fun, "=");
+
+    HISS_ASSERT_TYPE(fun, a, 0, HISS_QEXPR);
+
+    hiss_val* syms = a->cells[0];
+
+    for(i = 0; i < syms->count; i++)
+        HISS_ASSERT(a, (syms->cells[i]->type == HISS_SYM),
+                    "Function %s cannot define non-symbol. Got %s, expected %s", fun,
+                    hiss_type_name(syms->cells[i]->type),
+                    hiss_type_name(HISS_SYM));
+
+    HISS_ASSERT(a, (syms->count == a->count-1),
+                "Function %s passed too many arguments for symbols. Got %i, expected %i.",
+                fun, syms->count, a->count-1);
+
+    for(i = 0; i < syms->count; i++){
+        if(def) hiss_env_def(e, syms->cells[i], a->cells[i+1]);
+        if(equals) hiss_env_put(e, syms->cells[i], a->cells[i+1]);
+    }
+
+    hiss_val_del(a);
+
+    return hiss_val_sexpr();
+}
+
+static hiss_val* builtin_def(hiss_env* e, hiss_val* a){
+    return builtin_var(e, a, "def");
+}
+
+static hiss_val* builtin_put(hiss_env* e, hiss_val* a){
+    return builtin_var(e, a, "=");
 }
 
 void hiss_env_add_builtin(hiss_env* e, const char* name, hiss_builtin fun){
@@ -382,6 +527,10 @@ void hiss_env_add_builtin(hiss_env* e, const char* name, hiss_builtin fun){
 }
 
 void hiss_env_add_builtins(hiss_env* e){  
+  hiss_env_add_builtin(e, "def", builtin_def);
+  hiss_env_add_builtin(e, "=", builtin_put);
+  hiss_env_add_builtin(e, "defun", builtin_lambda);
+
   hiss_env_add_builtin(e, "list", builtin_list);
   hiss_env_add_builtin(e, "head", builtin_head);
   hiss_env_add_builtin(e, "tail", builtin_tail);
@@ -394,3 +543,52 @@ void hiss_env_add_builtins(hiss_env* e){
   hiss_env_add_builtin(e, "/", builtin_div);
 }
 
+const char* hiss_type_name(int t){
+    switch(t){
+        case HISS_FUN: return "Function";
+        case HISS_NUM: return "Number";
+        case HISS_ERR: return "Error";
+        case HISS_SYM: return "Symbol";
+        case HISS_SEXPR: return "S-Expression";
+        case HISS_QEXPR: return "Q-Expression";
+        default: return "Unknown";
+    }
+}
+
+static hiss_val* hiss_val_call(hiss_env* e, hiss_val* f, hiss_val* a){
+    unsigned int actual = a->count;
+    unsigned int expected = f->formals->count;
+
+    if(f->fun) return f->fun(e, a);
+
+    while(a->count){
+        if(f->formals->count == 0){
+            hiss_val_del(a);
+            return hiss_err("Function passed too many arguments. Got %i, expected %i.",
+                            actual, expected);
+        }
+
+        hiss_val* sym = hiss_val_pop(f->formals, 0);
+
+        hiss_val* val = hiss_val_pop(a, 0);
+
+        hiss_env_put(f->env, sym, val);
+
+        hiss_val_del(sym);
+        hiss_val_del(val);
+    }
+
+    hiss_val_del(a);
+
+    if(f->formals->count == 0){
+        f->env->par = e;
+        return builtin_eval(f->env, hiss_val_add(hiss_val_sexpr(), hiss_val_copy(f->body)));
+    }
+    
+    return hiss_val_copy(f);
+}
+
+#undef HISS_ASSERT
+#undef HISS_ASSERT_TYPE
+#undef HISS_ASSERT_NUM
+#undef HISS_ASSERT_NON_EMPTY

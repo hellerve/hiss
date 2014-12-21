@@ -24,7 +24,7 @@ fun {reverse l} {
 fun {at l i} {
     if(== i 0)
          {(head l)}
-         {(nth (tail l)(+ 1 i))}}
+         {(at (tail l)(+ 1 i))}}
 
 fun {in l e} {
     if(== l {})

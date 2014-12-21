@@ -1,0 +1,59 @@
+def {fun}(
+    lambda {args body} 
+        {def (head args) 
+            (lambda 
+                (tail args) body)})
+
+fun {curry f xs} {
+    eval 
+        (join 
+            (list f) xs)}
+
+fun {uncurry f & args} {f xs}
+
+fun {len l} {
+      if(== l {})
+              {0}
+              {+ 1 (len (tail l))}}
+
+fun {reverse l} {
+    if(== l {})
+        {{}}
+        {join (reverse (tail l)) (head l)}}
+
+fun {at l i} {
+    if(== i 0)
+         {(head l)}
+         {(nth (tail l)(+ 1 i))}}
+
+fun {in l e} {
+    if(== l {})
+        {false}
+        {(if(== e (head l)))
+            {true}
+            {(in l e)}}}
+
+fun {last l} {
+    if(== 1 (len l))
+        {(head l)}
+        {(last (tail l)}}
+
+fun {or x y} {
+    if(x)
+        {true}
+        {if(y)
+            {true}
+            {false}}}
+
+fun {and x y} {
+    if(x)
+        {if(y)
+            {true}
+            {false}}
+        {false}}
+
+fun {not x} {
+    if(x)
+        {false}
+        {true}}
+

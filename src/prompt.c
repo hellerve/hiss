@@ -122,7 +122,7 @@ int repl(){
         vpc_result r;
 
         if(vpc_parse("stdin", input, hiss, &r)){
-            hiss_val* x = hiss_val_eval(e, hiss_val_read(r.output));
+            hiss_val* x = hiss_val_eval(e, hiss_val_read(r.output, e));
             hiss_val_println(x);
             hiss_val_del(x);
             

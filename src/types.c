@@ -28,6 +28,7 @@ hiss_env* hiss_env_new(){
   e->count = 0;
   e->syms = NULL;
   e->vals = NULL;
+  e->max = GC_TRESHOLD;
   return e;
 }
 
@@ -35,6 +36,7 @@ hiss_val* hiss_val_num(long n){
     hiss_val* val = malloc(sizeof(hiss_val));
     val->type = HISS_NUM;
     val->num = n;
+    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -44,6 +46,7 @@ hiss_val* hiss_val_bool(unsigned short boolean){
     if(boolean != 0)
         val->boolean = HISS_TRUE;
     val->boolean = boolean;
+    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -52,6 +55,7 @@ hiss_val* hiss_val_sym(const char* s){
     val->type = HISS_SYM;
     val->sym = malloc(strlen(s) + 1);
     strcpy(val->sym, s);
+    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -60,6 +64,7 @@ hiss_val* hiss_val_str(const char* s){
     val->type = HISS_STR;
     val->str = malloc(strlen(s) + 1);
     strcpy(val->str, s);
+    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -67,6 +72,7 @@ hiss_val* hiss_val_fun(hiss_builtin fun) {
   hiss_val* val = malloc(sizeof(hiss_val));
   val->type = HISS_FUN;
   val->fun = fun;
+    val->marked = HISS_FALSE;
   return val;
 }
 
@@ -75,6 +81,7 @@ hiss_val* hiss_val_sexpr(){
     val->type = HISS_SEXPR;
     val->count = 0;
     val->cells = NULL;
+    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -83,6 +90,7 @@ hiss_val* hiss_val_qexpr(){
   v->type = HISS_QEXPR;
   v->count = 0;
   v->cells = NULL;
+    val->marked = HISS_FALSE;
   return v;
 }
 
@@ -93,6 +101,7 @@ hiss_val* hiss_val_lambda(hiss_val* formals, hiss_val* body){
   v->env = hiss_env_new();
   v->formals = formals;
   v->body = body;
+    val->marked = HISS_FALSE;
   return v;  
 }
 
@@ -107,6 +116,7 @@ hiss_val* hiss_err(const char* fmt, ...){
 
     val->err = realloc(val->err, strlen(val->err)+1);
 
+    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -158,7 +168,7 @@ static hiss_val* hiss_val_read_str(vpc_ast* t){
     return str;
 }
 
-hiss_val* hiss_val_read(vpc_ast* t){
+hiss_val* hiss_val_read(vpc_ast* t, hiss_env* e){
     unsigned int i;
     hiss_val* v = NULL;
     if(strstr(t->tag, "number")) return hiss_val_read_num(t);
@@ -178,7 +188,7 @@ hiss_val* hiss_val_read(vpc_ast* t){
         v = hiss_val_add(v, hiss_val_read(t->children[i]));
     }
 
-      return v;
+    return v;
 }
 
 static void hiss_val_expr_print(hiss_val* v, const char open, const char close){
@@ -585,8 +595,10 @@ void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
         return;
     }
   }
-
+  
   e->count++;
+  if(e->num > e->max) gc(e);
+
   e->vals = realloc(e->vals, sizeof(hiss_val*) * e->count);
   e->syms = realloc(e->syms, sizeof(char*) * e->count);
 

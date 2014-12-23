@@ -7,13 +7,6 @@
 #include "parser.h"
 #include "util.h"
 
-enum {HISS_ERR, HISS_NUM, HISS_BOOL, HISS_SYM, HISS_FUN, 
-      HISS_SEXPR, HISS_QEXPR, HISS_STR};
-
-enum {HISS_ZERO_DIV, HISS_BAD_OP, HISS_BAD_NUM};
-
-enum {HISS_FALSE, HISS_TRUE};
-
 struct hiss_val;
 struct hiss_env;
 typedef struct hiss_val hiss_val;
@@ -22,6 +15,7 @@ typedef hiss_val*(*hiss_builtin)(hiss_env*, hiss_val*);
 
 struct hiss_val {
     unsigned short type;
+    unsigned short marked;
     long num;
     unsigned short boolean;
     char* err;

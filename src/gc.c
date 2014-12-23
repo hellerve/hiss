@@ -1,9 +1,4 @@
-static void mark_all(hiss_env* e){
-    int i;
-
-    for(i = 0; i < e->count; i++)
-        mark(e->vals[i]);
-}
+#include "gc.h"
 
 static void mark(hiss_val* v){
     int i;
@@ -12,14 +7,21 @@ static void mark(hiss_val* v){
 
     v->marked = HISS_TRUE;
 
-    if(a->formals)
-        mark(a->formals);
+    if(v->formals)
+        mark(v->formals);
 
-    if(a->body)
-        mark(a->body);
+    if(v->body)
+        mark(v->body);
 
-    for(i = 0; i < a->num; i++)
-        mark(a->cells[i]);
+    for(i = 0; i < v->count; i++)
+        mark(v->cells[i]);
+}
+
+static void mark_all(hiss_env* e){
+    int i;
+
+    for(i = 0; i < e->count; i++)
+        mark(e->vals[i]);
 }
 
 static void sweep(hiss_env* e){
@@ -34,8 +36,8 @@ static void sweep(hiss_env* e){
             v = &e->vals[i++];
             free(unreached);
         }else{
-            (*object)->marked = 0;
-            object = &(*object)->next;
+            (*v)->marked = 0;
+            v = &e->vals[i++];
         }
     }
 
@@ -46,6 +48,6 @@ void gc(hiss_env* e){
     mark_all(e);
     sweep(e);
 
-    e->max = e->num * 2;
+    e->max = e->count * 2;
 }
 

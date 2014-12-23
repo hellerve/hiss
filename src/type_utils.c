@@ -1,4 +1,4 @@
-#include "types.h"
+#include "type_utils.h"
 
 #define HISS_ASSERT(args, cond, fmt, ...) \
   if (!(cond)) { hiss_val* err = hiss_err(fmt, __VA_ARGS__); hiss_val_del(args); return err;}
@@ -90,7 +90,7 @@ hiss_val* hiss_val_qexpr(){
   v->type = HISS_QEXPR;
   v->count = 0;
   v->cells = NULL;
-    val->marked = HISS_FALSE;
+  v->marked = HISS_FALSE;
   return v;
 }
 
@@ -101,7 +101,7 @@ hiss_val* hiss_val_lambda(hiss_val* formals, hiss_val* body){
   v->env = hiss_env_new();
   v->formals = formals;
   v->body = body;
-    val->marked = HISS_FALSE;
+  v->marked = HISS_FALSE;
   return v;  
 }
 
@@ -168,7 +168,7 @@ static hiss_val* hiss_val_read_str(vpc_ast* t){
     return str;
 }
 
-hiss_val* hiss_val_read(vpc_ast* t, hiss_env* e){
+hiss_val* hiss_val_read(vpc_ast* t){
     unsigned int i;
     hiss_val* v = NULL;
     if(strstr(t->tag, "number")) return hiss_val_read_num(t);
@@ -597,7 +597,7 @@ void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
   }
   
   e->count++;
-  if(e->num > e->max) gc(e);
+  if(e->count > e->max) gc(e);
 
   e->vals = realloc(e->vals, sizeof(hiss_val*) * e->count);
   e->syms = realloc(e->syms, sizeof(char*) * e->count);

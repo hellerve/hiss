@@ -2,7 +2,7 @@
 #include <string.h>
 
 #include "parser.h"
-#include "types.h"
+#include "type_utils.h"
 
 #ifdef _WIN32
 
@@ -45,27 +45,24 @@ static inline int ends_with(const char* str, const char* suffix){
     if(lensfx > lenstr)
         return HISS_FALSE;
 
-    return strcmp(str + lenstr - lensfx, suffix, lensfx) == 0;
+    return strcmp(str + lenstr - lensfx, suffix) == 0;
 }
 
-static inline void parse_arguments(int argc, char** argv){
+static inline char* parse_arguments(int argc, char** argv){
     unsigned int i;
-    hiss_val* x = NULL;
-    hiss_val* args = NULL;
+
     for(i = 1; i < argc; i++){
         if(strcmp(argv[i], "-v") == 0){
             printf(VERSION);
             exit(0);
         } if(ends_with(argv[i], ".his")){
-            args = hiss_val_add(hiss_val_sexpr(), hiss_val_str(argv[i]));
-            x = builtin_load(e, args);
-            if(x->type == HISS_ERR) hiss_val_println(x);
-            hiss_val_del(x);
+            return argv[i];
         }else {
             printf(USAGE);
             exit(127);
         }
     }
+    return NULL;
 }
 
 static inline void print_header(){
@@ -82,7 +79,10 @@ static inline void print_header(){
     printf("For exiting, press Ctrl-C or type exit/quit\n\n");
 }
 
-int repl(){
+int repl(const char* f){
+    hiss_val* x = NULL;
+    hiss_val* args = NULL;
+    hiss_env* e = NULL;
     vpc_parser* number = vpc_new("number");
     vpc_parser* symbol = vpc_new("symbol");
     vpc_parser* string = vpc_new("string");
@@ -106,33 +106,40 @@ int repl(){
     number, symbol, string, comment, s_expression, q_expression, 
     expression, hiss);
     
-    hiss_env* e = hiss_env_new();
+    e = hiss_env_new();
     hiss_env_add_builtins(e);
-    
-    while(1){
-        char* input = readline(PROMPT);
+
+    if(f){
+        args = hiss_val_add(hiss_val_sexpr(), hiss_val_str(f));
+        x = builtin_load(e, args);
+        if(x->type == HISS_ERR) hiss_val_println(x);
+        hiss_val_del(x);
+    }else{
+        while(1){
+            char* input = readline(PROMPT);
         
-        add_history(input);
+            add_history(input);
 
-        if(strcmp(input, "exit") == 0 || strcmp(input, "quit") == 0){
-            free(input);
-            break;
-        }
+            if(strcmp(input, "exit") == 0 || strcmp(input, "quit") == 0){
+                free(input);
+                break;
+            }
 
-        vpc_result r;
+            vpc_result r;
 
-        if(vpc_parse("stdin", input, hiss, &r)){
-            hiss_val* x = hiss_val_eval(e, hiss_val_read(r.output, e));
-            hiss_val_println(x);
-            hiss_val_del(x);
+            if(vpc_parse("stdin", input, hiss, &r)){
+                hiss_val* x = hiss_val_eval(e, hiss_val_read(r.output));
+                hiss_val_println(x);
+                hiss_val_del(x);
             
-            vpc_ast_delete(r.output);
-        } else {
-            vpc_err_print(r.error);
-            vpc_err_delete(r.error);
-        }
+                vpc_ast_delete(r.output);
+            } else {
+                vpc_err_print(r.error);
+                vpc_err_delete(r.error);
+            }
 
-        free(input);
+            free(input);
+        }
     }
 
     hiss_env_del(e);
@@ -144,10 +151,11 @@ int repl(){
 }
 
 int main(int argc, char**argv){
+    char* f = NULL;
     if(argc > 1)
-        parse_arguments(argc, argv);
+        f = parse_arguments(argc, argv);
 
     print_header();
     
-    return repl();
+    return repl(f);
 }

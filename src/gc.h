@@ -1,8 +1,8 @@
 #ifndef GC
 #define GC
 
-struct hiss_env;
-struct hiss_val;
+#include "types.h"
+#include "util.h"
 
 void gc(hiss_env* e);
 

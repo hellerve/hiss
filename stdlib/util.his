@@ -1,5 +1,12 @@
 (def {nil} {})
 
+(fun {fst l} { eval (head l) })
+(fun {snd l} { eval (head (tail l)) })
+(fun {trd l} { eval (head (tail (tail l))) })
+
+(fun {zero?} {== curry 0})
+(fun {positive?} {> curry 0})
+(fun {negativ2?} {< curry 0})
 
 (fun {len l} {
       if(== l {})
@@ -19,7 +26,7 @@
 (fun {at l i} {
     if(== i 0)
          {(head l)}
-         {(at (tail l)(+ 1 i))}})
+         {(at (tail l)(- 1 i))}})
 
 (fun {in l e} {
     if(== l {})
@@ -58,5 +65,6 @@
 })
 
 (fun {sum l} {foldl + 0 l})
-
 (fun {product l} {foldl * 1 l})
+(fun {any? pre & l} {(or(map pre l))}
+(fun {all? pre & l} {(and(map pre l))}

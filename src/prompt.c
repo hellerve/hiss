@@ -36,13 +36,32 @@ void add_history(char* unused){}
                the REPL is started.\n\t-h triggers this help message.\n\t\
                -v triggers version information\n"
 
+static inline int ends_with(const char* str, const char* suffix){
+    size_t lenstr = strlen(str);
+    size_t lensfx = strlen(suffix);
+    if(!str || !suffix)
+        return HISS_FALSE;
+
+    if(lensfx > lenstr)
+        return HISS_FALSE;
+
+    return strcmp(str + lenstr - lensfx, suffix, lensfx) == 0;
+}
+
 static inline void parse_arguments(int argc, char** argv){
-    int i;
+    unsigned int i;
+    hiss_val* x = NULL;
+    hiss_val* args = NULL;
     for(i = 1; i < argc; i++){
-        if(strcmp(argv[argc], "-v")){
+        if(strcmp(argv[i], "-v") == 0){
             printf(VERSION);
             exit(0);
-        } else {
+        } if(ends_with(argv[i], ".his")){
+            args = hiss_val_add(hiss_val_sexpr(), hiss_val_str(argv[i]));
+            x = builtin_load(e, args);
+            if(x->type == HISS_ERR) hiss_val_println(x);
+            hiss_val_del(x);
+        }else {
             printf(USAGE);
             exit(127);
         }

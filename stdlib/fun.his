@@ -7,3 +7,6 @@
     eval(join(list f) xs)})
 
 (fun {uncurry f & args} {f xs})
+
+(fun {let b} {
+    ((lambda {_} b)())})

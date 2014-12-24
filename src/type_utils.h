@@ -8,6 +8,10 @@
 #include "gc.h"
 #include "util.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * Constructor functions
  */
@@ -59,5 +63,9 @@ void hiss_val_del(hiss_val* val);
  */
 hiss_val* hiss_val_eval_sexpr(hiss_env* e, hiss_val* v);
 hiss_val* hiss_val_eval(hiss_env* e, hiss_val* v);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

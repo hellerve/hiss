@@ -5,11 +5,6 @@
  */
 
 
-#define VPC_CONTINUE(st, x) vpc_stack_set_state(stk, st); if(!vpc_stack_pushp(stk, x)) break; continue
-#define VPC_SUCCESS(x) vpc_stack_popp(stk, &p, &st); if(!vpc_stack_pushr(stk, vpc_result_out(x), 1)) break; continue
-#define VPC_FAILURE(x) vpc_stack_popp(stk, &p, &st); if(!vpc_stack_pushr(stk, vpc_result_err(x), 0)) break; continue
-#define VPC_PRIMATIVE(x, f) if(f){ VPC_SUCCESS(x);}else{VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Incorrect Input"));}
-
 /*
  *  Input type
  */
@@ -154,10 +149,10 @@ typedef union{
   vpc_pdata_apply apply;
   vpc_pdata_apply_to apply_to;
   vpc_pdata_predict predict;
-  vpc_pdata_not not;
+  vpc_pdata_not not_op;
   vpc_pdata_repeat repeat;
-  vpc_pdata_or or;
-  vpc_pdata_and and;
+  vpc_pdata_or or_op;
+  vpc_pdata_and and_op;
 } vpc_pdata;
 
 struct vpc_parser{
@@ -172,10 +167,10 @@ struct vpc_parser{
 */
 
 typedef struct{
-  int parsers_count;
+  unsigned int parsers_count;
   unsigned int parsers_slots;
   vpc_parser** parsers;
-  int* states;
+  unsigned int* states;
 
   unsigned int results_count;
   unsigned int results_slots;
@@ -185,6 +180,15 @@ typedef struct{
   vpc_err* err;
   
 } vpc_stack;
+
+/*
+ *  Type based macros
+ */
+
+#define VPC_CONTINUE(st, x) vpc_stack_set_state(stk, st); if(!vpc_stack_pushp(stk, x)) break; continue
+#define VPC_SUCCESS(x) vpc_stack_popp(stk, &p, &st); if(!vpc_stack_pushr(stk, vpc_result_out(x), 1)) break; continue
+#define VPC_FAILURE(x) vpc_stack_popp(stk, &p, &st); if(!vpc_stack_pushr(stk, vpc_result_err(x), 0)) break; continue
+#define VPC_PRIMATIVE(x, f) if(f){ VPC_SUCCESS(x);}else{VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Incorrect Input"));}
 
 /*
  *  Static functions
@@ -211,7 +215,7 @@ static vpc_cur_state vpc_state_new(){
 }
 
 static vpc_cur_state* vpc_state_copy(vpc_cur_state s){
-    vpc_cur_state* r = malloc(sizeof(vpc_cur_state));
+    vpc_cur_state* r = (vpc_cur_state*) malloc(sizeof(vpc_cur_state));
     memcpy(r, &s, sizeof(vpc_cur_state));
     return r;
 }
@@ -221,13 +225,13 @@ static vpc_cur_state* vpc_state_copy(vpc_cur_state s){
  */
 
 static vpc_err* vpc_err_new(const char* filename, vpc_cur_state s, const char* expected, char recieved){
-    vpc_err* err = malloc(sizeof(vpc_err));
-    err->filename = malloc(strlen(filename) + 1);
+    vpc_err* err = (vpc_err*) malloc(sizeof(vpc_err));
+    err->filename = (char*) malloc(strlen(filename) + 1);
     strcpy(err->filename, filename);
     err->state = s,
     err->expected_count = 1;
-    err->expected = malloc(sizeof(char*));
-    err->expected[0] = malloc(strlen(expected) + 1);
+    err->expected = (char**) malloc(sizeof(char*));
+    err->expected[0] = (char*) malloc(strlen(expected) + 1);
     strcpy(err->expected[0], expected);
     err->failure = NULL;
     err->recieved = recieved;
@@ -235,13 +239,13 @@ static vpc_err* vpc_err_new(const char* filename, vpc_cur_state s, const char* e
 }
 
 static vpc_err* vpc_err_fail(const char* filename, vpc_cur_state s, const char* failure){
-    vpc_err* err = malloc(sizeof(vpc_err));
-    err->filename = malloc(strlen(filename) + 1);
+    vpc_err* err = (vpc_err*) malloc(sizeof(vpc_err));
+    err->filename = (char*) malloc(strlen(filename) + 1);
     strcpy(err->filename, filename);
     err->state = s;
     err->expected_count = 0;
     err->expected = NULL;
-    err->failure = malloc(strlen(failure) + 1);
+    err->failure = (char*) malloc(strlen(failure) + 1);
     strcpy(err->failure, failure);
     err->recieved = ' ';
     return err;
@@ -257,8 +261,8 @@ static int vpc_err_contains_expected(vpc_err* container, char* expected){
 
 static void vpc_err_add_expected(vpc_err* add_to, char* expected){
     add_to->expected_count++;
-    add_to->expected = realloc(add_to->expected, sizeof(char*) * (long unsigned int) add_to->expected_count);
-    add_to->expected[add_to->expected_count-1] = malloc(strlen(expected) + 1);
+    add_to->expected = (char**) realloc(add_to->expected, sizeof(char*) * (long unsigned int) add_to->expected_count);
+    add_to->expected[add_to->expected_count-1] = (char*) malloc(strlen(expected) + 1);
     strcpy(add_to->expected[add_to->expected_count-1], expected);
 }
 
@@ -268,8 +272,8 @@ static void vpc_err_clear_expected(vpc_err* clear_from, char* expected){
         free(clear_from->expected[i]);
     
     clear_from->expected_count = 1;
-    clear_from->expected = realloc(clear_from->expected, sizeof(char*) * (long unsigned int) clear_from->expected_count);
-    clear_from->expected[0] = malloc(strlen(expected) + 1);
+    clear_from->expected = (char**) realloc(clear_from->expected, sizeof(char*) * (long unsigned int) clear_from->expected_count);
+    clear_from->expected[0] = (char*) malloc(strlen(expected) + 1);
     strcpy(clear_from->expected[0], expected);
 }
 
@@ -305,23 +309,23 @@ static const char *vpc_err_char_unescape(char c) {
 }
 
 static vpc_err *vpc_err_or(vpc_err** es, unsigned int n){
-    int i, j;
-    vpc_err *e = malloc(sizeof(vpc_err));
+    unsigned int i, j;
+    vpc_err *e = (vpc_err*) malloc(sizeof(vpc_err));
     e->state = vpc_state_invalid();
     e->expected_count = 0;
     e->expected = NULL;
     e->failure = NULL;
-    e->filename = malloc(strlen(es[0]->filename)+1);
+    e->filename = (char*) malloc(strlen(es[0]->filename)+1);
     strcpy(e->filename, es[0]->filename);
 
     for(i = 0; i < n; i++)
         if(es[i]->state.pos > e->state.pos) e->state = es[i]->state;
 
-    for( i = 0; i < n; i++){
+    for(i = 0; i < n; i++){
         if(es[i]->state.pos < e->state.pos) continue;
 
         if(es[i]->failure){
-            e->failure = malloc(strlen(es[i]->failure)+1);
+            e->failure = (char*) malloc(strlen(es[i]->failure)+1);
             strcpy(e->failure, es[i]->failure);
             break;
         }
@@ -339,27 +343,27 @@ static vpc_err *vpc_err_or(vpc_err** es, unsigned int n){
     return e;
 }
 
-static vpc_err *vpc_err_repeat(vpc_err* e, const char* prefix){
+static vpc_err* vpc_err_repeat(vpc_err* e, const char* prefix){
     unsigned int i;
-    char *expect = malloc(strlen(prefix) + 1);
+    char* expect = (char*) malloc(strlen(prefix) + 1);
     strcpy(expect, prefix);
 
     if(e->expected_count == 1){
-        expect = realloc(expect, strlen(expect) + strlen(e->expected[0]) + 1);
+        expect = (char*) realloc(expect, strlen(expect) + strlen(e->expected[0]) + 1);
         strcat(expect, e->expected[0]);
     }
 
     if(e->expected_count > 1){
         for(i = 0; i < e->expected_count-2; i++){
-            expect = realloc(expect, strlen(expect) + strlen(e->expected[i]) + strlen(", ") + 1);
+            expect = (char*) realloc(expect, strlen(expect) + strlen(e->expected[i]) + strlen(", ") + 1);
             strcat(expect, e->expected[i]);
             strcat(expect, ", ");
         }
 
-        expect = realloc(expect, strlen(expect) + strlen(e->expected[e->expected_count-2]) + strlen(" or ") + 1);
+        expect = (char*) realloc(expect, strlen(expect) + strlen(e->expected[e->expected_count-2]) + strlen(" or ") + 1);
         strcat(expect, e->expected[e->expected_count-2]);
         strcat(expect, " or ");
-        expect = realloc(expect, strlen(expect) + strlen(e->expected[e->expected_count-1]) + 1);
+        expect = (char*) realloc(expect, strlen(expect) + strlen(e->expected[e->expected_count-1]) + 1);
         strcat(expect, e->expected[e->expected_count-1]);
     }
 
@@ -376,7 +380,7 @@ static vpc_err* vpc_err_many1(vpc_err* x){
 static vpc_err *vpc_err_count(vpc_err* e, unsigned int n){
     vpc_err* c;
     unsigned int digits = n/10 + 1;
-    char* prefix = malloc(digits + strlen(" of ") + 1);
+    char* prefix = (char*) malloc(digits + strlen(" of ") + 1);
     
     sprintf(prefix, "%i of ", n);
     c = vpc_err_repeat(e, prefix);
@@ -391,12 +395,12 @@ static vpc_err *vpc_err_count(vpc_err* e, unsigned int n){
  */
 
 static vpc_input* vpc_input_new_string(const char*filename, const char* string){
-    vpc_input* v = malloc(sizeof(vpc_input));
-    v->filename = malloc(strlen(filename) + 1);
+    vpc_input* v = (vpc_input*) malloc(sizeof(vpc_input));
+    v->filename = (char*) malloc(strlen(filename) + 1);
     strcpy(v->filename, filename);
     v->type = VPC_INPUT_STRING;
     v->state = vpc_state_new();
-    v->string = malloc(strlen(string) + 1);
+    v->string = (char*) malloc(strlen(string) + 1);
     strcpy(v->string, string);
     v->buffer = NULL;
     v->file = NULL;
@@ -410,8 +414,8 @@ static vpc_input* vpc_input_new_string(const char*filename, const char* string){
 
 
 static vpc_input* vpc_input_new_pipe(const char* filename, FILE* pipe){
-    vpc_input* v = malloc(sizeof(vpc_input));
-    v->filename = malloc(strlen(filename) + 1);
+    vpc_input* v = (vpc_input*) malloc(sizeof(vpc_input));
+    v->filename = (char*) malloc(strlen(filename) + 1);
     strcpy(v->filename, filename);
     v->type = VPC_INPUT_PIPE;
     v->state = vpc_state_new();
@@ -430,8 +434,8 @@ static vpc_input* vpc_input_new_pipe(const char* filename, FILE* pipe){
 }
 
 static vpc_input* vpc_input_new_file(const char* filename, FILE* file){
-    vpc_input* v = malloc(sizeof(vpc_input));
-    v->filename = malloc(strlen(filename) + 1);
+    vpc_input* v = (vpc_input*) malloc(sizeof(vpc_input));
+    v->filename = (char*) malloc(strlen(filename) + 1);
     strcpy(v->filename, filename);
     v->type = VPC_INPUT_FILE;
     v->state = vpc_state_new();
@@ -469,18 +473,18 @@ static void vpc_input_backtrack_enable(vpc_input* v){
 static void vpc_input_mark(vpc_input* v) {
     if(v->backtrack != VPC_TRUE) return;
     v->marks_count++;
-    v->marks = realloc(v->marks, sizeof(vpc_cur_state) * v->marks_count);
-    v->lasts = realloc(v->lasts, sizeof(char) * v->marks_count);
+    v->marks = (vpc_cur_state*) realloc(v->marks, sizeof(vpc_cur_state) * v->marks_count);
+    v->lasts = (char*) realloc(v->lasts, sizeof(char) * v->marks_count);
     v->marks[v->marks_count-1] = v->state;
     v->lasts[v->marks_count-1] = v->last;
-    if(v->type == VPC_INPUT_PIPE && v->marks_count == 1) v->buffer = calloc(1, 1);
+    if(v->type == VPC_INPUT_PIPE && v->marks_count == 1) v->buffer = (char*) calloc(1, 1);
 }
 
 static void vpc_input_unmark(vpc_input* v){
     if (v->backtrack != VPC_TRUE) return;
     v->marks_count--;
-    v->marks = realloc(v->marks, sizeof(vpc_cur_state) * v->marks_count);
-    v->lasts = realloc(v->lasts, sizeof(char) * v->marks_count);
+    v->marks = (vpc_cur_state*) realloc(v->marks, sizeof(vpc_cur_state) * v->marks_count);
+    v->lasts = (char*) realloc(v->lasts, sizeof(char) * v->marks_count);
     if(v->type == VPC_INPUT_PIPE && v->marks_count == 0){
         free(v->buffer);
         v->buffer = NULL;
@@ -597,7 +601,7 @@ static int vpc_input_success(vpc_input* v, char c, char **o){
   if (v->type == VPC_INPUT_PIPE &&
       v->buffer &&
       !vpc_input_buffer_in_range(v)){
-    v->buffer = realloc(v->buffer, strlen(v->buffer) + 2);
+    v->buffer = (char*) realloc(v->buffer, strlen(v->buffer) + 2);
     v->buffer[strlen(v->buffer) + 1] = '\0';
     v->buffer[strlen(v->buffer) + 0] = c;
   }
@@ -612,7 +616,7 @@ static int vpc_input_success(vpc_input* v, char c, char **o){
   }
   
   if(o){
-    *o = malloc(2);
+    *o = (char*) malloc(2);
     *o[0] = c;
     *o[1] = '\0';
   }
@@ -672,7 +676,7 @@ static int vpc_input_string(vpc_input* v, const char* c, char** o){
   }
   vpc_input_unmark(v);
   
-  *o = malloc(strlen(c) + 1);
+  *o = (char*) malloc(strlen(c) + 1);
   strcpy(*o, c);
   return VPC_TRUE;
 }
@@ -686,7 +690,7 @@ static int vpc_input_anchor(vpc_input* v, int(*f)(char,char)){
  */
 
 static vpc_stack* vpc_stack_new(const char* filename){
-  vpc_stack* s = malloc(sizeof(vpc_stack));
+  vpc_stack* s = (vpc_stack*) malloc(sizeof(vpc_stack));
   
   s->parsers_count = 0;
   s->parsers_slots = 0;
@@ -733,20 +737,20 @@ static int vpc_stack_terminate(vpc_stack* s, vpc_result* r){
  *  Stack parser functions
  */
 
-static void vpc_stack_set_state(vpc_stack* s, int x){
+static void vpc_stack_set_state(vpc_stack* s, unsigned int x){
   s->states[s->parsers_count-1] = x;
 }
 
 static int vpc_stack_parsers_reserve_more(vpc_stack* s){
   vpc_parser** check_realloc = NULL;
-  int* check_realloc2 = NULL;
+  unsigned int* check_realloc2 = NULL;
   if(s->parsers_count > s->parsers_slots){
     s->parsers_slots = (unsigned int) ceil((s->parsers_slots+1) * 1.5);
-    check_realloc = realloc(s->parsers, sizeof(vpc_parser*) * s->parsers_slots);
+    check_realloc = (vpc_parser**) realloc(s->parsers, sizeof(vpc_parser*) * s->parsers_slots);
     if(!check_realloc) return VPC_FALSE;
     s->parsers = check_realloc;
     check_realloc = NULL;
-    check_realloc2 = realloc(s->states, sizeof(int) * s->parsers_slots);
+    check_realloc2 = (unsigned int*) realloc(s->states, sizeof(int) * s->parsers_slots);
     if(!check_realloc2) return VPC_FALSE;
     s->states = check_realloc2;
     check_realloc2 = 0;
@@ -756,15 +760,14 @@ static int vpc_stack_parsers_reserve_more(vpc_stack* s){
 
 static int vpc_stack_parsers_reserve_less(vpc_stack* s){
   vpc_parser** check_realloc = NULL;
-  int* check_realloc2 = NULL;
+  unsigned int* check_realloc2 = NULL;
   if(s->parsers_slots > pow(s->parsers_count+1, 1.5)){
     s->parsers_slots = (unsigned int) floor((s->parsers_slots-1) * (1.0/1.5));
-    check_realloc = realloc(s->parsers, sizeof(vpc_parser*) * s->parsers_slots);
+    check_realloc = (vpc_parser**) realloc(s->parsers, sizeof(vpc_parser*) * s->parsers_slots);
     if(!check_realloc) return VPC_FALSE;
     s->parsers = check_realloc;
     check_realloc = NULL;
-    s->states = realloc(s->states, sizeof(int) * s->parsers_slots);
-    check_realloc2 = realloc(s->states, sizeof(int) * s->parsers_slots);
+    check_realloc2 = (unsigned int*) realloc(s->states, sizeof(int) * s->parsers_slots);
     if(!check_realloc2) return VPC_FALSE;
     s->states = check_realloc2;
     check_realloc2 = 0;
@@ -780,14 +783,14 @@ static int vpc_stack_pushp(vpc_stack* s, vpc_parser* p){
   return VPC_TRUE;
 }
 
-static void vpc_stack_popp(vpc_stack* s, vpc_parser** p, int* st){
+static void vpc_stack_popp(vpc_stack* s, vpc_parser** p, unsigned int* st){
   *p = s->parsers[s->parsers_count-1];
   *st = s->states[s->parsers_count-1];
   s->parsers_count--;
   vpc_stack_parsers_reserve_less(s);
 }
 
-static void vpc_stack_peepp(vpc_stack* s, vpc_parser** p, int* st){
+static void vpc_stack_peepp(vpc_stack* s, vpc_parser** p, unsigned int* st){
   *p = s->parsers[s->parsers_count-1];
   *st = s->states[s->parsers_count-1];
 }
@@ -817,11 +820,11 @@ static int vpc_stack_results_reserve_more(vpc_stack* s){
   int* realloc_check2;
   if (s->results_count > s->results_slots){
     s->results_slots = (unsigned int) ceil((s->results_slots + 1) * 1.5);
-    realloc_check = realloc(s->results, sizeof(vpc_result) * s->results_slots);
+    realloc_check = (vpc_result*) realloc(s->results, sizeof(vpc_result) * s->results_slots);
     if(!realloc_check) return VPC_FALSE;
     s->results = realloc_check;
     realloc_check = NULL;
-    realloc_check2 = realloc(s->returns, sizeof(int) * s->results_slots);
+    realloc_check2 = (int*) realloc(s->returns, sizeof(int) * s->results_slots);
     if(!realloc_check2) return VPC_FALSE;
     s->returns = realloc_check2;
     realloc_check2 = NULL;
@@ -834,11 +837,11 @@ static int vpc_stack_results_reserve_less(vpc_stack* s){
   int* realloc_check2;
   if ( s->results_slots > pow(s->results_count+1, 1.5)) {
     s->results_slots = (unsigned int) floor((s->results_slots-1) * (1.0/1.5));
-    realloc_check = realloc(s->results, sizeof(vpc_result) * s->results_slots);
+    realloc_check = (vpc_result*) realloc(s->results, sizeof(vpc_result) * s->results_slots);
     if(!realloc_check) return VPC_FALSE;
     s->results = realloc_check;
     realloc_check = NULL;
-    realloc_check2 = realloc(s->returns, sizeof(int) * s->results_slots);
+    realloc_check2 = (int*) realloc(s->returns, sizeof(int) * s->results_slots);
     if(!realloc_check2) return VPC_FALSE;
     s->returns = realloc_check2;
     realloc_check2 = NULL;
@@ -868,7 +871,7 @@ static int vpc_stack_peekr(vpc_stack* s, vpc_result* x){
   return s->returns[s->results_count-1];
 }
 
-static void vpc_stack_popr_err(vpc_stack* s, int n){
+static void vpc_stack_popr_err(vpc_stack* s, unsigned int n){
   vpc_result x;
   while(n){
     vpc_stack_popr(s, &x);
@@ -877,7 +880,7 @@ static void vpc_stack_popr_err(vpc_stack* s, int n){
   }
 }
 
-static void vpc_stack_popr_out(vpc_stack* s, int n, vpc_dtor* ds){
+static void vpc_stack_popr_out(vpc_stack* s, unsigned int n, vpc_dtor* ds){
   vpc_result x;
   while(n){
     vpc_stack_popr(s, &x);
@@ -886,7 +889,7 @@ static void vpc_stack_popr_out(vpc_stack* s, int n, vpc_dtor* ds){
   }
 }
 
-static void vpc_stack_popr_out_single(vpc_stack* s, int n, vpc_dtor dx){
+static void vpc_stack_popr_out_single(vpc_stack* s, unsigned int n, vpc_dtor dx){
   vpc_result x;
   while(n){
     vpc_stack_popr(s, &x);
@@ -945,7 +948,7 @@ void vpc_err_print(vpc_err* print){
 }
 
 char *vpc_err_string(vpc_err *e){
-    char* buffer = calloc(1, 1024);
+    char* buffer = (char*) calloc(1, 1024);
     int max = 1023;
     int pos = 0;
     unsigned int i;
@@ -973,7 +976,7 @@ char *vpc_err_string(vpc_err *e){
     vpc_err_string_cat(buffer, &pos, &max, vpc_err_char_unescape(e->recieved));
     vpc_err_string_cat(buffer, &pos, &max, "\n");
 
-    return realloc(buffer, strlen(buffer)+1);
+    return (char*) realloc(buffer, strlen(buffer)+1);
 
 }
 
@@ -983,7 +986,7 @@ char *vpc_err_string(vpc_err *e){
 
 
 int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final){
-  int st = 0;
+  unsigned int st = 0;
   vpc_parser *p = NULL;
   vpc_stack *stk = vpc_stack_new(i->filename);
   char *s;
@@ -1065,27 +1068,27 @@ int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final){
       case VPC_TYPE_NOT:
         if(st == VPC_FALSE){ 
             vpc_input_mark(i); 
-            VPC_CONTINUE(1, p->data.not.x); 
+            VPC_CONTINUE(1, p->data.not_op.x); 
         }
         if(st == VPC_TRUE){
           if(vpc_stack_popr(stk, &r)){
             vpc_input_rewind(i);
-            p->data.not.dx(r.output);
+            p->data.not_op.dx(r.output);
             VPC_FAILURE(vpc_err_new(i->filename, i->state, "opposite", vpc_input_peekc(i)));
           } else {
             vpc_input_unmark(i);
             vpc_stack_err(stk, r.error);
-            VPC_SUCCESS(p->data.not.lf());
+            VPC_SUCCESS(p->data.not_op.lf());
           }
         }
       case VPC_TYPE_MAYBE:
-        if(st == VPC_FALSE) VPC_CONTINUE(1, p->data.not.x);
+        if(st == VPC_FALSE) VPC_CONTINUE(1, p->data.not_op.x);
         if(st == VPC_TRUE){
           if(vpc_stack_popr(stk, &r)){
             VPC_SUCCESS(r.output);
           }else{
             vpc_stack_err(stk, r.error);
-            VPC_SUCCESS(p->data.not.lf());
+            VPC_SUCCESS(p->data.not_op.lf());
           }
         }
       
@@ -1099,7 +1102,7 @@ int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final){
           } else {
             vpc_stack_popr(stk, &r);
             vpc_stack_err(stk, r.error);
-            VPC_SUCCESS(vpc_stack_merger_out(stk, (unsigned) st-1, p->data.repeat.f));
+            VPC_SUCCESS(vpc_stack_merger_out(stk, st-1, p->data.repeat.f));
           }
         }
       case VPC_TYPE_MANY1:
@@ -1114,7 +1117,7 @@ int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final){
             } else {
               vpc_stack_popr(stk, &r);
               vpc_stack_err(stk, r.error);
-              VPC_SUCCESS(vpc_stack_merger_out(stk, (unsigned) st-1, p->data.repeat.f));
+              VPC_SUCCESS(vpc_stack_merger_out(stk, st-1, p->data.repeat.f));
             }
           }
         }
@@ -1136,7 +1139,7 @@ int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final){
               vpc_stack_popr(stk, &r);
               vpc_stack_err(stk, r.error);
               vpc_input_unmark(i);
-              VPC_SUCCESS(vpc_stack_merger_out(stk, (unsigned) st-1, p->data.repeat.f));
+              VPC_SUCCESS(vpc_stack_merger_out(stk, st-1, p->data.repeat.f));
             }
           }
         }
@@ -1144,34 +1147,34 @@ int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final){
       /* Combinatory Parsers */
       
       case VPC_TYPE_OR:
-        if (p->data.or.n == 0) VPC_SUCCESS(NULL);
-        if(st == 0) VPC_CONTINUE(st+1, p->data.or.xs[st]);
-        if(st <= p->data.or.n){
+        if (p->data.or_op.n == 0) VPC_SUCCESS(NULL);
+        if(st == 0) VPC_CONTINUE(st+1, p->data.or_op.xs[st]);
+        if(st <= p->data.or_op.n){
           if(vpc_stack_peekr(stk, &r)){
             vpc_stack_popr(stk, &r);
             vpc_stack_popr_err(stk, st-1);
             VPC_SUCCESS(r.output);
           }
-          if(st <  p->data.or.n) VPC_CONTINUE(st+1, p->data.or.xs[st]);
-          if (st == p->data.or.n) VPC_FAILURE(vpc_stack_merger_err(stk, p->data.or.n));
+          if(st <  p->data.or_op.n) VPC_CONTINUE(st+1, p->data.or_op.xs[st]);
+          if (st == p->data.or_op.n) VPC_FAILURE(vpc_stack_merger_err(stk, p->data.or_op.n));
         }
       case VPC_TYPE_AND:
-        if (p->data.and.n == 0) VPC_SUCCESS(p->data.and.f(0, NULL));
+        if (p->data.and_op.n == 0) VPC_SUCCESS(p->data.and_op.f(0, NULL));
         if (st == VPC_FALSE){ 
             vpc_input_mark(i); 
-            VPC_CONTINUE(st+1, p->data.and.xs[st]); 
+            VPC_CONTINUE(st+1, p->data.and_op.xs[st]); 
         }
-        if(st <= p->data.and.n){
+        if(st <= p->data.and_op.n){
           if(!vpc_stack_peekr(stk, &r)){
             vpc_input_rewind(i);
             vpc_stack_popr(stk, &r);
-            vpc_stack_popr_out(stk, st-1, p->data.and.dxs);
+            vpc_stack_popr_out(stk, st-1, p->data.and_op.dxs);
             VPC_FAILURE(r.error);
           }
-          if(st <  p->data.and.n) VPC_CONTINUE(st+1, p->data.and.xs[st]);
-          if(st == p->data.and.n) {
+          if(st <  p->data.and_op.n) VPC_CONTINUE(st+1, p->data.and_op.xs[st]);
+          if(st == p->data.and_op.n) {
               vpc_input_unmark(i); 
-              VPC_SUCCESS(vpc_stack_merger_out(stk, p->data.and.n, p->data.and.f)); 
+              VPC_SUCCESS(vpc_stack_merger_out(stk, p->data.and_op.n, p->data.and_op.f)); 
           }
         }
       

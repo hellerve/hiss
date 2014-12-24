@@ -3,13 +3,15 @@ PREFIX=/usr/bin/
 BUILDDIR=bin/
 LIBS=-ledit
 
+CC=cc
+
 TARGET=hiss
 SOURCES=$(wildcard src/*.c)
 
 #Makes everything
 all:
 	mkdir -p $(BUILDDIR)  2> /dev/null || true
-	cc $(CFLAGS) $(LIBS) $(SOURCES) -o $(BUILDDIR)$(TARGET)
+	$(CC) $(CFLAGS) $(LIBS) $(SOURCES) -o $(BUILDDIR)$(TARGET)
 
 #Uses picky extensions and makes everything(Extensions may break compiling)
 dev:

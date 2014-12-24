@@ -8,6 +8,10 @@
 #include <math.h>
 #include <errno.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum {VPC_FALSE, VPC_TRUE};
 
 /*
@@ -318,6 +322,8 @@ int vpc_test_fail(vpc_parser *p, const char *s, const void *d,
   vpc_dtor destructor,
   void(*printer)(const void*));
 
-
+#ifdef __cplusplus
+}
+#endif
 
 #endif

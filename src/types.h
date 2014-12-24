@@ -1,6 +1,10 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct hiss_val;
 struct hiss_env;
 typedef struct hiss_val hiss_val;
@@ -30,5 +34,9 @@ struct hiss_env {
   char** syms;
   hiss_val** vals;
 };
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

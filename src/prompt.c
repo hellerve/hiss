@@ -49,7 +49,7 @@ static inline int ends_with(const char* str, const char* suffix){
 }
 
 static inline char* parse_arguments(int argc, char** argv){
-    unsigned int i;
+    int i;
 
     for(i = 1; i < argc; i++){
         if(strcmp(argv[i], "-v") == 0){
@@ -128,11 +128,11 @@ int repl(const char* f){
             vpc_result r;
 
             if(vpc_parse("stdin", input, hiss, &r)){
-                hiss_val* x = hiss_val_eval(e, hiss_val_read(r.output));
+                hiss_val* x = hiss_val_eval(e, hiss_val_read((vpc_ast*)r.output));
                 hiss_val_println(x);
                 hiss_val_del(x);
             
-                vpc_ast_delete(r.output);
+                vpc_ast_delete((vpc_ast*)r.output);
             } else {
                 vpc_err_print(r.error);
                 vpc_err_delete(r.error);

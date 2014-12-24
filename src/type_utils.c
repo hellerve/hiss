@@ -23,7 +23,7 @@ static hiss_val* hiss_val_call(hiss_env* e, hiss_val* f, hiss_val* a);
 const char* hiss_type_name(int t);
 
 hiss_env* hiss_env_new(){
-  hiss_env* e = malloc(sizeof(hiss_env));
+  hiss_env* e = (hiss_env*) malloc(sizeof(hiss_env));
   e->par = NULL;
   e->count = 0;
   e->syms = NULL;
@@ -33,7 +33,7 @@ hiss_env* hiss_env_new(){
 }
 
 hiss_val* hiss_val_num(long n){
-    hiss_val* val = malloc(sizeof(hiss_val));
+    hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
     val->type = HISS_NUM;
     val->num = n;
     val->marked = HISS_FALSE;
@@ -41,7 +41,7 @@ hiss_val* hiss_val_num(long n){
 }
 
 hiss_val* hiss_val_bool(unsigned short boolean){
-    hiss_val* val = malloc(sizeof(hiss_val));
+    hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
     val->type = HISS_BOOL;
     if(boolean != 0)
         val->boolean = HISS_TRUE;
@@ -51,25 +51,25 @@ hiss_val* hiss_val_bool(unsigned short boolean){
 }
 
 hiss_val* hiss_val_sym(const char* s){
-    hiss_val* val = malloc(sizeof(hiss_val));
+    hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
     val->type = HISS_SYM;
-    val->sym = malloc(strlen(s) + 1);
+    val->sym = (char*) malloc(strlen(s) + 1);
     strcpy(val->sym, s);
     val->marked = HISS_FALSE;
     return val;
 }
 
 hiss_val* hiss_val_str(const char* s){
-    hiss_val* val = malloc(sizeof(hiss_val));
+    hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
     val->type = HISS_STR;
-    val->str = malloc(strlen(s) + 1);
+    val->str = (char*) malloc(strlen(s) + 1);
     strcpy(val->str, s);
     val->marked = HISS_FALSE;
     return val;
 }
 
 hiss_val* hiss_val_fun(hiss_builtin fun) {
-  hiss_val* val = malloc(sizeof(hiss_val));
+  hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
   val->type = HISS_FUN;
   val->fun = fun;
     val->marked = HISS_FALSE;
@@ -77,7 +77,7 @@ hiss_val* hiss_val_fun(hiss_builtin fun) {
 }
 
 hiss_val* hiss_val_sexpr(){
-    hiss_val* val = malloc(sizeof(hiss_val));
+    hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
     val->type = HISS_SEXPR;
     val->count = 0;
     val->cells = NULL;
@@ -86,7 +86,7 @@ hiss_val* hiss_val_sexpr(){
 }
 
 hiss_val* hiss_val_qexpr(){
-  hiss_val* v = malloc(sizeof(hiss_val));
+  hiss_val* v = (hiss_val*) malloc(sizeof(hiss_val));
   v->type = HISS_QEXPR;
   v->count = 0;
   v->cells = NULL;
@@ -95,7 +95,7 @@ hiss_val* hiss_val_qexpr(){
 }
 
 hiss_val* hiss_val_lambda(hiss_val* formals, hiss_val* body){
-  hiss_val* v = malloc(sizeof(hiss_val));
+  hiss_val* v = (hiss_val*) malloc(sizeof(hiss_val));
   v->type = HISS_FUN;
   v->fun = NULL;
   v->env = hiss_env_new();
@@ -106,15 +106,15 @@ hiss_val* hiss_val_lambda(hiss_val* formals, hiss_val* body){
 }
 
 hiss_val* hiss_err(const char* fmt, ...){
-    hiss_val* val = malloc(sizeof(hiss_val));
+    hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
     va_list va;
     va_start(va, fmt);
     val->type = HISS_ERR;
-    val->err = malloc(512);
+    val->err = (char*) malloc(512);
     
     vsnprintf(val->err, 511, fmt, va);
 
-    val->err = realloc(val->err, strlen(val->err)+1);
+    val->err = (char*) realloc(val->err, strlen(val->err)+1);
 
     val->marked = HISS_FALSE;
     return val;
@@ -122,20 +122,20 @@ hiss_val* hiss_err(const char* fmt, ...){
 
 hiss_val* hiss_val_add(hiss_val* v, hiss_val* a){
     v->count++;
-    v->cells = realloc(v->cells, sizeof(hiss_val*) * v->count);
+    v->cells = (hiss_val**) realloc(v->cells, sizeof(hiss_val*) * v->count);
     v->cells[v->count-1] = a;
     return v;
 }
 
 hiss_env* hiss_env_copy(hiss_env* e){
-    int i;
-    hiss_env* n = malloc(sizeof(hiss_env));
+    unsigned int i;
+    hiss_env* n = (hiss_env*) malloc(sizeof(hiss_env));
     n->par = e->par;
     n->count = e->count;
-    n->syms = malloc(sizeof(char*) * n->count);
-    n->vals = malloc(sizeof(hiss_val*) * n->count);
+    n->syms = (char**) malloc(sizeof(char*) * n->count);
+    n->vals = (hiss_val**) malloc(sizeof(hiss_val*) * n->count);
     for(i = 0; i < e->count; i++){
-        n->syms[i] = malloc(strlen(e->syms[i]) + 1);
+        n->syms[i] = (char*) malloc(strlen(e->syms[i]) + 1);
         strcpy(n->syms[i], e->syms[i]);
         n->vals[i] = hiss_val_copy(e->vals[i]);
     }
@@ -159,9 +159,9 @@ static hiss_val* hiss_val_read_str(vpc_ast* t){
     
     t->contents[strlen(t->contents)-1] = '\0';
     
-    unescaped = malloc(strlen(t->contents+1)+1);
+    unescaped = (char*) malloc(strlen(t->contents+1)+1);
     strcpy(unescaped, t->contents+1);
-    unescaped = vpcf_unescape(unescaped);
+    unescaped = (char*) vpcf_unescape((vpc_val*)unescaped);
     str = hiss_val_str(unescaped);
     
     free(unescaped);
@@ -205,10 +205,10 @@ static void hiss_val_expr_print(hiss_val* v, const char open, const char close){
 }
 
 static void hiss_val_print_str(hiss_val* v){
-    char* escaped = malloc(strlen(v->str)+1);
+    char* escaped = (char*) malloc(strlen(v->str)+1);
     strcpy(escaped, v->str);
 
-    escaped = vpcf_escape(escaped);
+    escaped = (char*) vpcf_escape((vpc_val*)escaped);
     printf("\"%s\"", escaped);
 
     free(escaped);
@@ -287,7 +287,7 @@ hiss_val* hiss_val_pop(hiss_val* val, unsigned int i){
 
   val->count--;
 
-  val->cells = realloc(val->cells, sizeof(hiss_val*) * val->count);
+  val->cells = (hiss_val**) realloc(val->cells, sizeof(hiss_val*) * val->count);
   return x;
 }
 
@@ -423,7 +423,7 @@ hiss_val* builtin_ord(hiss_env* e, hiss_val* a, const char* op){
 }
 
 static hiss_val* hiss_val_eq(hiss_val* x, hiss_val* y){
-    int i;
+  unsigned int i;
   if (x->type != y->type) return hiss_val_bool(HISS_FALSE);
 
   switch (x->type){
@@ -534,8 +534,8 @@ static hiss_val* builtin_if(hiss_env* e, hiss_val* a){
 }
 
 hiss_val* hiss_val_copy(hiss_val* val){
-  int i;
-  hiss_val* c = malloc(sizeof(hiss_val));
+  unsigned int i;
+  hiss_val* c = (hiss_val*) malloc(sizeof(hiss_val));
   c->type = val->type;
   
   switch (val->type) {
@@ -551,22 +551,22 @@ hiss_val* hiss_val_copy(hiss_val* val){
         break;
     case HISS_NUM: c->num = val->num; break;
     case HISS_STR: 
-        c->str = malloc(strlen(val->str + 1)); 
+        c->str = (char*) malloc(strlen(val->str + 1)); 
         strcpy(c->str, val->str);
         break;
     case HISS_BOOL: c->boolean = val->boolean; break;
     case HISS_ERR:
-      c->err = malloc(strlen(val->err) + 1);
+      c->err = (char*) malloc(strlen(val->err) + 1);
       strcpy(c->err, val->err); 
       break;
     case HISS_SYM:
-      c->sym = malloc(strlen(val->sym) + 1);
+      c->sym = (char*) malloc(strlen(val->sym) + 1);
       strcpy(c->sym, val->sym); 
       break;
     case HISS_SEXPR:
     case HISS_QEXPR:
       c->count = val->count;
-      c->cells = malloc(sizeof(hiss_val*) * c->count);
+      c->cells = (hiss_val**) malloc(sizeof(hiss_val*) * c->count);
       for(i = 0; i < c->count; i++)
         c->cells[i] = hiss_val_copy(val->cells[i]);
     break;
@@ -588,7 +588,8 @@ hiss_val* hiss_env_get(hiss_env* e, hiss_val* k){
 }
 
 void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
-  for(int i = 0; i < e->count; i++){
+  unsigned int i;
+  for(i = 0; i < e->count; i++){
       if(strcmp(e->syms[i], k->sym) == 0){
         e->vals[i] = v;
         return;
@@ -598,10 +599,10 @@ void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
   e->count++;
   if(e->count > e->max) gc(e);
 
-  e->syms = realloc(e->syms, sizeof(char*) * e->count);
+  e->syms = (char**) realloc(e->syms, sizeof(char*) * e->count);
 
   e->vals[e->count-1] = v;
-  e->syms[e->count-1] = malloc(strlen(k->sym)+1);
+  e->syms[e->count-1] = (char*) malloc(strlen(k->sym)+1);
   strcpy(e->syms[e->count-1], k->sym);
 }
 
@@ -669,7 +670,7 @@ static hiss_val* builtin_false(hiss_env* e, hiss_val* a){
 }
 
 static hiss_val* builtin_lambda(hiss_env* e, hiss_val* a){
-  int i;
+  unsigned int i;
   hiss_val* formals = NULL;
   hiss_val* body = NULL;
 
@@ -690,7 +691,7 @@ static hiss_val* builtin_lambda(hiss_env* e, hiss_val* a){
 }
 
 static hiss_val* builtin_var(hiss_env* e, hiss_val* a, const char* fun){
-    int i;
+    unsigned int i;
     int def = strcmp(fun, "def");
     int equals = strcmp(fun, "=");
 

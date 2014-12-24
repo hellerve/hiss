@@ -1,7 +1,7 @@
 #include "gc.h"
 
 static void mark(hiss_val* v){
-    int i;
+    unsigned int i;
 
     if(v->marked) return;
 
@@ -18,14 +18,14 @@ static void mark(hiss_val* v){
 }
 
 static void mark_all(hiss_env* e){
-    int i;
+    unsigned int i;
 
     for(i = 0; i < e->count; i++)
         mark(e->vals[i]);
 }
 
 static void sweep(hiss_env* e){
-    int i = 0;
+    unsigned int i = 0;
     hiss_val* unreached;
     hiss_val** v = &e->vals[i++];
 

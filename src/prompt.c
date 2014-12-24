@@ -36,7 +36,7 @@ void add_history(char* unused){}
                the REPL is started.\n\t-h triggers this help message.\n\t\
                -v triggers version information\n"
 
-static inline int ends_with(const char* str, const char* suffix){
+static __inline int ends_with(const char* str, const char* suffix){
     size_t lenstr = strlen(str);
     size_t lensfx = strlen(suffix);
     if(!str || !suffix)
@@ -48,7 +48,7 @@ static inline int ends_with(const char* str, const char* suffix){
     return strcmp(str + lenstr - lensfx, suffix) == 0;
 }
 
-static inline char* parse_arguments(int argc, char** argv){
+static __inline char* parse_arguments(int argc, char** argv){
     int i;
 
     for(i = 1; i < argc; i++){
@@ -65,7 +65,7 @@ static inline char* parse_arguments(int argc, char** argv){
     return NULL;
 }
 
-static inline void print_header(){
+static __inline void print_header(){
     printf(VERSION);
 #if defined(__GNUC__) || defined(__GNUG__)
     printf(", compiled with gcc %s\n", __VERSION__);
@@ -80,6 +80,7 @@ static inline void print_header(){
 }
 
 int repl(const char* f){
+    vpc_result r;
     hiss_val* x = NULL;
     hiss_val* args = NULL;
     hiss_env* e = NULL;
@@ -93,15 +94,14 @@ int repl(const char* f){
     vpc_parser* hiss  = vpc_new("hiss");
 
     vpca_lang(VPCA_LANG_DEFAULT,
-        "                                                             \
-            number        : /-?[0-9]+/ ;                              \
-            symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/          \
-            string        : /\"(\\\\.|[^\"])*\"/ ;                    \
-            comment       : /#[^\\r\\n]*/ ;                           \
-            s_expression  : '(' <expr>* ')' ;                         \
-            q_expression  : '{' <expr>* '}' ;                         \
-            expression    : <number> | <symbol> | <sexpr> | <qexpr> ; \
-            hiss          : /^/ <expr>* /$/ ;                         \
+        "number        : /-?[0-9]+/;                       \
+         symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/; \
+         string        : /\"(\\\\.|[^\"])*\"/;             \
+         comment       : /#[^\\r\\n]*/;                    \
+         s_expression  : '('<expr>*')';                    \
+         q_expression  : '{'<expr>*'}';                    \
+         expression    : <number>|<symbol>|<sexpr>|<qexpr>;\
+         hiss          : /^/<expr>*/$/;                    \
         ",
     number, symbol, string, comment, s_expression, q_expression, 
     expression, hiss);
@@ -124,8 +124,6 @@ int repl(const char* f){
                 free(input);
                 break;
             }
-
-            vpc_result r;
 
             if(vpc_parse("stdin", input, hiss, &r)){
                 hiss_val* x = hiss_val_eval(e, hiss_val_read((vpc_ast*)r.output));

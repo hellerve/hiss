@@ -621,6 +621,7 @@ hiss_val* hiss_val_eval_sexpr(hiss_env* e, hiss_val* v){
   unsigned int i;
   hiss_val* f = NULL;
   hiss_val* err = NULL;
+  hiss_val* result = NULL;
 
   for(i = 0; i < v->count; i++)
     v->cells[i] = hiss_val_eval(e, v->cells[i]);
@@ -640,7 +641,7 @@ hiss_val* hiss_val_eval_sexpr(hiss_env* e, hiss_val* v){
     return err;
   }
 
-  hiss_val* result = hiss_val_call(e, f, v);
+  result = hiss_val_call(e, f, v);
   hiss_val_del(f);
   return result;
 }
@@ -694,10 +695,11 @@ static hiss_val* builtin_var(hiss_env* e, hiss_val* a, const char* fun){
     unsigned int i;
     int def = strcmp(fun, "def");
     int equals = strcmp(fun, "=");
+    hiss_val* syms = NULL;
 
     HISS_ASSERT_TYPE(fun, a, 0, HISS_QEXPR);
 
-    hiss_val* syms = a->cells[0];
+    syms = a->cells[0];
 
     for(i = 0; i < syms->count; i++)
         HISS_ASSERT(a, (syms->cells[i]->type == HISS_SYM),

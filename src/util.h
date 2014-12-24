@@ -15,7 +15,7 @@ enum {HISS_ZERO_DIV, HISS_BAD_OP, HISS_BAD_NUM};
 
 enum {HISS_FALSE, HISS_TRUE};
 
-static void inline die(char* message){
+static __inline void die(char* message){
     fprintf(stderr, "%s\n", message);
     exit(0);
 }

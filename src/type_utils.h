@@ -5,7 +5,7 @@
 #include <string.h>
 
 #include "parser.h"
-#include "gc.h"
+#include "hiss_hash.h"
 #include "util.h"
 
 #ifdef __cplusplus
@@ -38,7 +38,7 @@ void hiss_val_print(hiss_val* val);
 void hiss_val_println(hiss_val* val);
 hiss_val* hiss_val_pop(hiss_val* v, unsigned int i);
 hiss_val* hiss_val_take(hiss_val* v, unsigned int i);
-hiss_val* hiss_val_copy(hiss_val* val);
+hiss_val* hiss_val_copy(const hiss_val* val);
 hiss_val* hiss_env_get(hiss_env* e, hiss_val* k);
 void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v);
 

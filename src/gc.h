@@ -3,12 +3,13 @@
 
 #include "types.h"
 #include "util.h"
+#include "hiss_hash.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void gc(hiss_env* e);
+void gc(hiss_hashtable* t);
 
 #ifdef __cplusplus
 }

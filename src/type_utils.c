@@ -25,11 +25,8 @@ const char* hiss_type_name(int t);
 hiss_env* hiss_env_new(){
   hiss_env* e = (hiss_env*) malloc(sizeof(hiss_env));
   e->par = NULL;
-  e->count = 0;
   e->type_count = 0;
-  e->syms = NULL;
-  e->vals = NULL;
-  e->max = GC_TRESHOLD;
+  e->vals = hiss_table_new();
   return e;
 }
 
@@ -37,7 +34,6 @@ hiss_val* hiss_val_num(long n){
     hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
     val->type = HISS_NUM;
     val->num = n;
-    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -47,7 +43,6 @@ hiss_val* hiss_val_bool(unsigned short boolean){
     if(boolean != 0)
         val->boolean = HISS_TRUE;
     val->boolean = boolean;
-    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -56,7 +51,6 @@ hiss_val* hiss_val_sym(const char* s){
     val->type = HISS_SYM;
     val->sym = (char*) malloc(strlen(s) + 1);
     strcpy(val->sym, s);
-    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -65,7 +59,6 @@ hiss_val* hiss_val_str(const char* s){
     val->type = HISS_STR;
     val->str = (char*) malloc(strlen(s) + 1);
     strcpy(val->str, s);
-    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -73,7 +66,6 @@ hiss_val* hiss_val_fun(hiss_builtin fun) {
   hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
   val->type = HISS_FUN;
   val->fun = fun;
-  val->marked = HISS_FALSE;
   return val;
 }
 
@@ -82,7 +74,6 @@ hiss_val* hiss_val_sexpr(){
     val->type = HISS_SEXPR;
     val->count = 0;
     val->cells = NULL;
-    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -91,7 +82,6 @@ hiss_val* hiss_val_qexpr(){
   v->type = HISS_QEXPR;
   v->count = 0;
   v->cells = NULL;
-  v->marked = HISS_FALSE;
   return v;
 }
 
@@ -100,7 +90,6 @@ hiss_val* hiss_val_type(char* type){
   v->type = HISS_USR;
   v->type_name = type;
   v->count = 0;
-  v->marked = HISS_FALSE;
   return v;
 }
 
@@ -111,7 +100,6 @@ hiss_val* hiss_val_lambda(hiss_val* formals, hiss_val* body){
   v->env = hiss_env_new();
   v->formals = formals;
   v->body = body;
-  v->marked = HISS_FALSE;
   return v;  
 }
 
@@ -126,7 +114,6 @@ hiss_val* hiss_err(const char* fmt, ...){
 
     val->err = (char*) realloc(val->err, strlen(val->err)+1);
 
-    val->marked = HISS_FALSE;
     return val;
 }
 
@@ -138,17 +125,9 @@ hiss_val* hiss_val_add(hiss_val* v, hiss_val* a){
 }
 
 hiss_env* hiss_env_copy(hiss_env* e){
-    unsigned int i;
     hiss_env* n = (hiss_env*) malloc(sizeof(hiss_env));
     n->par = e->par;
-    n->count = e->count;
-    n->syms = (char**) malloc(sizeof(char*) * n->count);
-    n->vals = (hiss_val**) malloc(sizeof(hiss_val*) * n->count);
-    for(i = 0; i < e->count; i++){
-        n->syms[i] = (char*) malloc(strlen(e->syms[i]) + 1);
-        strcpy(n->syms[i], e->syms[i]);
-        n->vals[i] = hiss_val_copy(e->vals[i]);
-    }
+    n->vals = hiss_table_copy(e->vals);
     return n;
 }
 
@@ -270,14 +249,10 @@ void hiss_val_println(hiss_val* val){
 
 void hiss_env_del(hiss_env* e){
   unsigned int i;
-  for(i = 0; i < e->count; i++){
-    free(e->syms[i]);
-    hiss_val_del(e->vals[i]);
-  }
-
   for(i = 0; i < e->type_count; i++) free(e->types[i]);
 
-  free(e->syms);
+  hiss_table_delete(e->vals);
+
   free(e->vals);
   free(e);
 }
@@ -562,7 +537,7 @@ static hiss_val* builtin_if(hiss_env* e, hiss_val* a){
     return x;
 }
 
-hiss_val* hiss_val_copy(hiss_val* val){
+hiss_val* hiss_val_copy(const hiss_val* val){
   unsigned int i;
   hiss_val* c = (hiss_val*) malloc(sizeof(hiss_val));
   c->type = val->type;
@@ -605,10 +580,9 @@ hiss_val* hiss_val_copy(hiss_val* val){
 }
 
 hiss_val* hiss_env_get(hiss_env* e, hiss_val* k){
-  unsigned int i;
-  for(i = 0; i < e->count; i++)
-    if (strcmp(e->syms[i], k->sym) == 0)
-      return hiss_val_copy(e->vals[i]);
+  hiss_val* v = hiss_val_copy(hiss_table_get(e->vals, k));
+
+  if(v) return v;
 
   if(e->par)
       return hiss_env_get(e->par, k);
@@ -619,28 +593,19 @@ hiss_val* hiss_env_get(hiss_env* e, hiss_val* k){
 void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
   unsigned int i;
 
-  for(i = 0; i < e->count; i++){
-      if(strcmp(e->syms[i], k->sym) == 0){
-        e->vals[i] = v;
-        return;
-      } 
-      else if(strcmp(e->types[i], k->type_name) == 0)
+
+  for(i = 0; i < e->type_count; i++){
+      if(strcmp(e->types[i], k->type_name) == 0)
           return;
   }
 
   if(k->type == HISS_USR){ 
       e->type_count++;
       e->types[e->type_count-1] = k->type_name;
+      return;
   }
 
-  e->count++;
-  if(e->count > e->max) gc(e);
-
-  e->syms = (char**) realloc(e->syms, sizeof(char*) * e->count);
-
-  e->vals[e->count-1] = v;
-  e->syms[e->count-1] = (char*) malloc(strlen(k->sym)+1);
-  strcpy(e->syms[e->count-1], k->sym);
+  hiss_table_insert(e->vals, k, v);
 }
 
 hiss_val* hiss_val_eval(hiss_env* e, hiss_val* v){

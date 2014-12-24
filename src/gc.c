@@ -1,53 +1,37 @@
 #include "gc.h"
 
-static void mark(hiss_val* v){
-    unsigned int i;
-
+static void mark(hiss_entry* v){
     if(v->marked) return;
 
     v->marked = HISS_TRUE;
-
-    if(v->formals)
-        mark(v->formals);
-
-    if(v->body)
-        mark(v->body);
-
-    for(i = 0; i < v->count; i++)
-        mark(v->cells[i]);
 }
 
-static void mark_all(hiss_env* e){
+static void mark_all(hiss_hashtable* t){
     unsigned int i;
 
-    for(i = 0; i < e->count; i++)
-        mark(e->vals[i]);
+    for(i = 0; i < t->size; i++)
+        mark(t->table[i]);
 }
 
-static void sweep(hiss_env* e){
-    unsigned int i = 0;
-    hiss_val* unreached;
-    hiss_val** v = &e->vals[i++];
+static void sweep(hiss_hashtable* t){
+    hiss_entry* unreached;
+    hiss_entry** e = t->table;
 
-    while(*v){
-        if(!(*v)->marked){
-            unreached = *v;
+    while(*e){
+        if(!(*e)->marked){
+            unreached = *e;
 
-            v = &e->vals[i++];
-            free(unreached);
+            *e = unreached->next;
+            hiss_table_remove(t, unreached->key);
         }else{
-            (*v)->marked = 0;
-            v = &e->vals[i++];
+            (*e)->marked = 0;
+            e = &(*e)->next;
         }
     }
-
-    e->count--;
 }
 
-void gc(hiss_env* e){
-    mark_all(e);
-    sweep(e);
-
-    e->max = e->count * 2;
+void gc(hiss_hashtable* t){
+    mark_all(t);
+    sweep(t);
 }
 

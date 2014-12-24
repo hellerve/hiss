@@ -11,9 +11,21 @@ typedef struct hiss_val hiss_val;
 typedef struct hiss_env hiss_env;
 typedef hiss_val*(*hiss_builtin)(hiss_env*, hiss_val*);
 
+typedef struct hiss_entry{
+    unsigned short marked;
+    const hiss_val* key;
+    const hiss_val* value;
+    struct hiss_entry* next;
+}hiss_entry;
+
+typedef struct{
+    unsigned int size;
+    unsigned int n;
+    hiss_entry** table;
+}hiss_hashtable;
+
 struct hiss_val {
     unsigned short type;
-    unsigned short marked;
     long num;
     unsigned short boolean;
     char* err;
@@ -30,16 +42,9 @@ struct hiss_val {
 
 struct hiss_env {
   hiss_env* par;
-  unsigned int count;
   unsigned int type_count;
-  unsigned int max;
   char** types;
-  char** syms;
-  hiss_val** vals;
+  hiss_hashtable* vals;
 };
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

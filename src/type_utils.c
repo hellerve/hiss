@@ -26,6 +26,7 @@ hiss_env* hiss_env_new(){
   hiss_env* e = (hiss_env*) malloc(sizeof(hiss_env));
   e->par = NULL;
   e->count = 0;
+  e->type_count = 0;
   e->syms = NULL;
   e->vals = NULL;
   e->max = GC_TRESHOLD;
@@ -72,7 +73,7 @@ hiss_val* hiss_val_fun(hiss_builtin fun) {
   hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
   val->type = HISS_FUN;
   val->fun = fun;
-    val->marked = HISS_FALSE;
+  val->marked = HISS_FALSE;
   return val;
 }
 
@@ -90,6 +91,15 @@ hiss_val* hiss_val_qexpr(){
   v->type = HISS_QEXPR;
   v->count = 0;
   v->cells = NULL;
+  v->marked = HISS_FALSE;
+  return v;
+}
+
+hiss_val* hiss_val_type(char* type){
+  hiss_val* v = (hiss_val*) malloc(sizeof(hiss_val));
+  v->type = HISS_USR;
+  v->type_name = type;
+  v->count = 0;
   v->marked = HISS_FALSE;
   return v;
 }
@@ -153,6 +163,21 @@ hiss_val* hiss_val_read_num(vpc_ast* t){
     return errno != ERANGE ? hiss_val_num(n) : hiss_err((char *)"Invalid number.");
 }
 
+hiss_val* hiss_val_read_type(vpc_ast* t){
+    char* unescaped = NULL;
+    hiss_val* type = NULL;
+    
+    t->contents[strlen(t->contents)-1] = '\0';
+    
+    unescaped = (char*) malloc(strlen(t->contents+1)+1);
+    strcpy(unescaped, t->contents+1);
+    unescaped = (char*) vpcf_unescape((vpc_val*)unescaped);
+    type = hiss_val_type(unescaped);
+
+    free(unescaped);
+    return type;
+}
+
 static hiss_val* hiss_val_read_str(vpc_ast* t){
     char* unescaped = NULL;
     hiss_val* str = NULL;
@@ -173,6 +198,7 @@ hiss_val* hiss_val_read(vpc_ast* t){
     hiss_val* v = NULL;
     if(strstr(t->tag, "number")) return hiss_val_read_num(t);
     if(strstr(t->tag, "string")) return hiss_val_read_str(t);
+    if(strstr(t->tag, "type")) return hiss_val_read_type(t);
     if(strstr(t->tag, "symbol")) return hiss_val_sym(t->contents);
     if(strstr(t->tag, "qexpr")) v = hiss_val_qexpr();
 
@@ -248,6 +274,9 @@ void hiss_env_del(hiss_env* e){
     free(e->syms[i]);
     hiss_val_del(e->vals[i]);
   }
+
+  for(i = 0; i < e->type_count; i++) free(e->types[i]);
+
   free(e->syms);
   free(e->vals);
   free(e);
@@ -589,13 +618,21 @@ hiss_val* hiss_env_get(hiss_env* e, hiss_val* k){
 
 void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
   unsigned int i;
+
   for(i = 0; i < e->count; i++){
       if(strcmp(e->syms[i], k->sym) == 0){
         e->vals[i] = v;
         return;
-    }
+      } 
+      else if(strcmp(e->types[i], k->type_name) == 0)
+          return;
   }
-  
+
+  if(k->type == HISS_USR){ 
+      e->type_count++;
+      e->types[e->type_count-1] = k->type_name;
+  }
+
   e->count++;
   if(e->count > e->max) gc(e);
 
@@ -729,6 +766,19 @@ static hiss_val* builtin_put(hiss_env* e, hiss_val* a){
     return builtin_var(e, a, "=");
 }
 
+static hiss_val* builtin_type(hiss_env* e, hiss_val* a){
+    unsigned int i;
+
+    HISS_ASSERT_TYPE("type?", a, 0, HISS_USR);
+    HISS_ASSERT_NUM("type?", a, 1);
+
+    for(i = 0; i < e->type_count; i++)
+        if(strcmp(e->types[i], a->cells[0]->type_name) == 0)
+                return hiss_val_str(a->type_name);
+    
+    return hiss_val_bool(HISS_FALSE);
+}
+
 void hiss_env_add_builtin(hiss_env* e, const char* name, hiss_builtin fun){
   hiss_val* k = hiss_val_sym(name);
   hiss_val* v = hiss_val_fun(fun);
@@ -762,6 +812,7 @@ void hiss_env_add_builtins(hiss_env* e){
   hiss_env_add_builtin(e, "tail", builtin_tail);
   hiss_env_add_builtin(e, "eval", builtin_eval);
   hiss_env_add_builtin(e, "join", builtin_join);
+  hiss_env_add_builtin(e, "type?", builtin_type);
 
   hiss_env_add_builtin(e, "+", builtin_add);
   hiss_env_add_builtin(e, "-", builtin_sub);

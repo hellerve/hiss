@@ -19,6 +19,7 @@ struct hiss_val {
     char* err;
     char* sym;
     char* str;
+    char* type_name;
     hiss_builtin fun;
     hiss_env* env;
     hiss_val* formals;
@@ -30,7 +31,9 @@ struct hiss_val {
 struct hiss_env {
   hiss_env* par;
   unsigned int count;
+  unsigned int type_count;
   unsigned int max;
+  char** types;
   char** syms;
   hiss_val** vals;
 };

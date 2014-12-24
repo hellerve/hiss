@@ -94,14 +94,15 @@ int repl(const char* f){
     vpc_parser* hiss  = vpc_new("hiss");
 
     vpca_lang(VPCA_LANG_DEFAULT,
-        "number        : /-?[0-9]+/;                       \
-         symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/; \
-         string        : /\"(\\\\.|[^\"])*\"/;             \
-         comment       : /#[^\\r\\n]*/;                    \
-         s_expression  : '('<expr>*')';                    \
-         q_expression  : '{'<expr>*'}';                    \
-         expression    : <number>|<symbol>|<sexpr>|<qexpr>;\
-         hiss          : /^/<expr>*/$/;                    \
+        "number        : /-?[0-9]+/;                              \
+         symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/;        \
+         type          : /type\\: <symbol>/;                      \
+         string        : /\"(\\\\.|[^\"])*\"/;                    \
+         comment       : /#[^\\r\\n]*/;                           \
+         s_expression  : '('<expr>*')';                           \
+         q_expression  : '{'<expr>*'}';                           \
+         expression    : <number>|<symbol>|<sexpr>|<qexpr>|<type>;\
+         hiss          : /^/<expr>*/$/;                           \
         ",
     number, symbol, string, comment, s_expression, q_expression, 
     expression, hiss);

@@ -49,6 +49,7 @@ void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v);
 
 void hiss_env_add_builtin(hiss_env* e, const char* name, hiss_builtin fun);
 void hiss_env_add_builtins(hiss_env* e);
+void hiss_env_add_type(hiss_env* e, hiss_val* a);
 hiss_val* builtin_load(hiss_env* e, hiss_val* a);
 
 /*

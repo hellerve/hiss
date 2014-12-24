@@ -1,3 +1,4 @@
+(load "fun")
 (fun {or x y} {+ x y})
 
 (fun {and x y} {* x y})

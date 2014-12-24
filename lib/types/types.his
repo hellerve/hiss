@@ -1,0 +1,36 @@
+(load ".stdlib")
+
+(fun {number? c}{
+     (if (== (type? c) "Number"))
+        {true}
+        {false}})
+
+(fun {fun? c}{
+     (if (== (type? c) "Function"))
+        {true}
+        {false}})
+
+(fun {string? c}{
+     (if (== (type? c) "String"))
+        {true}
+        {false}})
+
+(fun {error? c}{
+     (if (== (type? c) "Error"))
+        {true}
+        {false}})
+
+(fun {boolean? c}{
+     (if (== (type? c) "Boolean"))
+        {true}
+        {false}})
+
+(fun {qexpr? c}{
+     (if (== (type? c) "Q-Expression"))
+        {true}
+        {false}})
+
+(fun {unknown_type? c}{
+     (if (== (type? c) "Unknown"))
+        {true}
+        {false}})

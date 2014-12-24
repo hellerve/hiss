@@ -1,0 +1,17 @@
+(load ".stdlib")
+(type:pair)
+
+(fun {pair? c}{
+     (if (== (type? c) "pair"))
+        {true}
+        {false}})
+
+(fun {car c}{
+     (if (pair? c))
+        {c (lambda(t a d) a)}
+        {error "Argument is not a pair"}})
+
+{fun {cdr c}{
+    (if (pair? c))
+        {c (lambda(t a d) d)}
+        {error "Argument is not a pair"}})

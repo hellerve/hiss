@@ -85,10 +85,11 @@ hiss_val* hiss_val_qexpr(){
   return v;
 }
 
-hiss_val* hiss_val_type(char* type){
+hiss_val* hiss_val_type(char* type, hiss_val* formals){
   hiss_val* v = (hiss_val*) malloc(sizeof(hiss_val));
   v->type = HISS_USR;
   v->type_name = type;
+  v->formals = formals;
   v->count = 0;
   return v;
 }
@@ -228,6 +229,11 @@ void hiss_val_print(hiss_val* val){
         case HISS_SYM: printf("%s", val->sym); break;
         case HISS_SEXPR: hiss_val_expr_print(val, '(', ')'); break;
         case HISS_QEXPR: hiss_val_expr_print(val, '{', '}'); break;
+        case HISS_USR: 
+            printf("<type %s: ", val->type_name);
+            hiss_val_print(val->formals);, 
+            printf(">");
+            break;
         case HISS_FUN: 
             if(val->fun){
                 printf("<function>"); 
@@ -263,6 +269,10 @@ void hiss_val_del(hiss_val* val){
         case HISS_BOOL:
         case HISS_NUM: break;
         case HISS_STR: free(val->str); break;
+        case HISS_USR: 
+            free(val->type_name); 
+            hiss_val_del(val->formals);
+            break;
         case HISS_ERR: free(val->err); break;
         case HISS_SYM: free(val->sym); break;
         case HISS_QEXPR:
@@ -432,6 +442,7 @@ static hiss_val* hiss_val_eq(hiss_val* x, hiss_val* y){
 
   switch (x->type){
     case HISS_NUM: return hiss_val_bool(x->num == y->num);
+    case HISS_USR: return hiss_val_bool(x->type_name == y->type_name);
     case HISS_STR: return hiss_val_bool(!(strcmp(x->str, y->str) == 0));
     case HISS_ERR: return hiss_val_bool(strcmp(x->err, y->err) == 0);
     case HISS_SYM: return hiss_val_bool(strcmp(x->sym, y->sym) == 0);
@@ -554,6 +565,10 @@ hiss_val* hiss_val_copy(const hiss_val* val){
         }
         break;
     case HISS_NUM: c->num = val->num; break;
+    case HISS_USR: 
+        c->type_name = val->type_name; 
+        c->fgormals = hiss_val_copy(val->formals);
+        break;
     case HISS_STR: 
         c->str = (char*) malloc(strlen(val->str + 1)); 
         strcpy(c->str, val->str);
@@ -734,8 +749,9 @@ static hiss_val* builtin_put(hiss_env* e, hiss_val* a){
 static hiss_val* builtin_type(hiss_env* e, hiss_val* a){
     unsigned int i;
 
-    HISS_ASSERT_TYPE("type?", a, 0, HISS_USR);
     HISS_ASSERT_NUM("type?", a, 1);
+
+    if(a->type != HISS_USR) return hiss_val_str(hiss_type_name(a->type));
 
     for(i = 0; i < e->type_count; i++)
         if(strcmp(e->types[i], a->cells[0]->type_name) == 0)
@@ -744,6 +760,22 @@ static hiss_val* builtin_type(hiss_env* e, hiss_val* a){
     return hiss_val_bool(HISS_FALSE);
 }
 
+static hiss_val* builtin_shell(hiss_env* e, hiss_val* a){
+    unsigned int i;
+    int status;
+
+    for(i = 0; i < a->count; i++)
+        HISS_ASSERT_TYPE("shell", a, i, HISS_STR);
+
+    for(i = 0; i < a->count; i++){
+        status = system(a->cells[i]->str);
+        if(status == -1) return hiss_err("system call errored.");
+    }
+
+    return hiss_val_num(status);
+}
+
+
 void hiss_env_add_builtin(hiss_env* e, const char* name, hiss_builtin fun){
   hiss_val* k = hiss_val_sym(name);
   hiss_val* v = hiss_val_fun(fun);
@@ -751,6 +783,43 @@ void hiss_env_add_builtin(hiss_env* e, const char* name, hiss_builtin fun){
   hiss_val_del(k); 
   hiss_val_del(v);
 }
+
+static hiss_val* hiss_eval_type(hiss_env* e, hiss_val* a){
+    /*nothing here*/
+  hiss_val* f = NULL;
+  hiss_val* err = NULL;
+  hiss_val* result = NULL;
+
+  for(i = 0; i < v->count; i++)
+    v->cells[i] = hiss_val_eval(e, v->cells[i]);
+  
+  for(i = 0; i < v->count; i++)
+    if(v->cells[i]->type == HISS_ERR) return hiss_val_take(v, i);
+
+  if(v->count == 0) return v; 
+  if(v->count == 1) return hiss_val_take(v, 0);
+
+  f = hiss_val_pop(v, 0);
+  if(f->type != HISS_FUN){
+    err = hiss_err("S-Expression starts with incorrect type. Got %s, expected %s.",
+                   hiss_type_name(f->type), hiss_type_name(HISS_FUN));
+    hiss_val_del(v); 
+    hiss_val_del(f);
+    return err;
+  }
+
+  result = hiss_val_call(e, f, v);
+  hiss_val_del(f);
+  return result;
+}
+
+void hiss_env_add_type(hiss_env* e, hiss_val* a){
+  if(a->type != HISS_USR) return;
+
+  hiss_env_add_builtin(e, a->type_name, hiss_eval_type);
+}
+
+
 
 void hiss_env_add_builtins(hiss_env* e){  
   hiss_env_add_builtin(e, "def", builtin_def);
@@ -778,6 +847,7 @@ void hiss_env_add_builtins(hiss_env* e){
   hiss_env_add_builtin(e, "eval", builtin_eval);
   hiss_env_add_builtin(e, "join", builtin_join);
   hiss_env_add_builtin(e, "type?", builtin_type);
+  hiss_env_add_builtin(e, "shell", builtin_shell);
 
   hiss_env_add_builtin(e, "+", builtin_add);
   hiss_env_add_builtin(e, "-", builtin_sub);
@@ -788,6 +858,7 @@ void hiss_env_add_builtins(hiss_env* e){
 const char* hiss_type_name(int t){
     switch(t){
         case HISS_FUN: return "Function";
+        case HISS_USR: return "User defined";
         case HISS_STR: return "String";
         case HISS_BOOL: return "Boolean";
         case HISS_NUM: return "Number";

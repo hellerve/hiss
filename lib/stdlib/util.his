@@ -1,3 +1,4 @@
+(load "fun")
 (def {nil} {})
 
 (fun {fst l} { eval (head l) })

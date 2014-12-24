@@ -590,8 +590,7 @@ hiss_val* hiss_env_get(hiss_env* e, hiss_val* k){
 void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
   for(int i = 0; i < e->count; i++){
       if(strcmp(e->syms[i], k->sym) == 0){
-        hiss_val_del(e->vals[i]);
-        e->vals[i] = hiss_val_copy(v);
+        e->vals[i] = v;
         return;
     }
   }
@@ -599,10 +598,9 @@ void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
   e->count++;
   if(e->count > e->max) gc(e);
 
-  e->vals = realloc(e->vals, sizeof(hiss_val*) * e->count);
   e->syms = realloc(e->syms, sizeof(char*) * e->count);
 
-  e->vals[e->count-1] = hiss_val_copy(v);
+  e->vals[e->count-1] = v;
   e->syms[e->count-1] = malloc(strlen(k->sym)+1);
   strcpy(e->syms[e->count-1], k->sym);
 }

@@ -6,6 +6,7 @@
 
 #include "parser.h"
 #include "hiss_hash.h"
+#include "hiss_type_table.h"
 #include "util.h"
 
 #ifdef __cplusplus

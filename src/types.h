@@ -24,6 +24,19 @@ typedef struct{
     hiss_entry** table;
 }hiss_hashtable;
 
+typedef struct hiss_type_entry{
+    unsigned short marked;
+    const char* key;
+    const hiss_val* value;
+    struct hiss_type_entry* next;
+}hiss_type_entry;
+
+typedef struct{
+    unsigned int size;
+    unsigned int n;
+    hiss_type_entry** table;
+}hiss_type_table;
+
 struct hiss_val {
     unsigned short type;
     long num;
@@ -42,8 +55,7 @@ struct hiss_val {
 
 struct hiss_env {
   hiss_env* par;
-  unsigned int type_count;
-  char** types;
+  hiss_type_table* types;
   hiss_hashtable* vals;
 };
 

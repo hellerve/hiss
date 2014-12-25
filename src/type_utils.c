@@ -25,7 +25,7 @@ const char* hiss_type_name(int t);
 hiss_env* hiss_env_new(){
   hiss_env* e = (hiss_env*) malloc(sizeof(hiss_env));
   e->par = NULL;
-  e->type_count = 0;
+  e->types = hiss_type_new();
   e->vals = hiss_table_new();
   return e;
 }
@@ -143,7 +143,26 @@ hiss_val* hiss_val_read_num(vpc_ast* t){
     return errno != ERANGE ? hiss_val_num(n) : hiss_err((char *)"Invalid number.");
 }
 
-hiss_val* hiss_val_read_type(vpc_ast* t){
+static hiss_val* hiss_val_read_expr(vpc_ast* t){
+    unsigned int i;
+    hiss_val* v = NULL;
+    if(strstr(t->tag, "qexpr")) v = hiss_val_qexpr();
+    if(strcmp(t->tag, ">") == 0 || strstr(t->tag, "sexpr")) v = hiss_val_sexpr();
+
+    for(i = 0; i < t->children_num; i++){
+        if(strcmp(t->children[i]->contents, "(") == 0) continue;
+        else if(strcmp(t->children[i]->contents, ")") == 0) continue;
+        else if(strcmp(t->children[i]->contents, "}") == 0) continue;
+        else if(strcmp(t->children[i]->contents, "{") == 0) continue; 
+        else if(strcmp(t->children[i]->tag,  "regex") == 0) continue;
+        else if(strstr(t->children[i]->tag, "comment")) continue;
+        v = hiss_val_add(v, hiss_val_read(t->children[i]));
+    }
+
+    return v;
+}
+
+static hiss_val* hiss_val_read_type(vpc_ast* t){
     char* unescaped = NULL;
     hiss_val* type = NULL;
     
@@ -152,7 +171,7 @@ hiss_val* hiss_val_read_type(vpc_ast* t){
     unescaped = (char*) malloc(strlen(t->contents+1)+1);
     strcpy(unescaped, t->contents+1);
     unescaped = (char*) vpcf_unescape((vpc_val*)unescaped);
-    type = hiss_val_type(unescaped);
+    type = hiss_val_type(unescaped, hiss_val_read_expr(t));
 
     free(unescaped);
     return type;
@@ -174,27 +193,11 @@ static hiss_val* hiss_val_read_str(vpc_ast* t){
 }
 
 hiss_val* hiss_val_read(vpc_ast* t){
-    unsigned int i;
-    hiss_val* v = NULL;
     if(strstr(t->tag, "number")) return hiss_val_read_num(t);
     if(strstr(t->tag, "string")) return hiss_val_read_str(t);
     if(strstr(t->tag, "type")) return hiss_val_read_type(t);
     if(strstr(t->tag, "symbol")) return hiss_val_sym(t->contents);
-    if(strstr(t->tag, "qexpr")) v = hiss_val_qexpr();
-
-    if(strcmp(t->tag, ">") == 0 || strstr(t->tag, "sexpr")) v = hiss_val_sexpr();
-
-    for(i = 0; i < t->children_num; i++){
-        if(strcmp(t->children[i]->contents, "(") == 0) continue;
-        else if(strcmp(t->children[i]->contents, ")") == 0) continue;
-        else if(strcmp(t->children[i]->contents, "}") == 0) continue;
-        else if(strcmp(t->children[i]->contents, "{") == 0) continue; 
-        else if(strcmp(t->children[i]->tag,  "regex") == 0) continue;
-        else if(strstr(t->children[i]->tag, "comment")) continue;
-        v = hiss_val_add(v, hiss_val_read(t->children[i]));
-    }
-
-    return v;
+    return hiss_val_read_expr(t);
 }
 
 static void hiss_val_expr_print(hiss_val* v, const char open, const char close){
@@ -231,7 +234,7 @@ void hiss_val_print(hiss_val* val){
         case HISS_QEXPR: hiss_val_expr_print(val, '{', '}'); break;
         case HISS_USR: 
             printf("<type %s: ", val->type_name);
-            hiss_val_print(val->formals);, 
+            hiss_val_print(val->formals);
             printf(">");
             break;
         case HISS_FUN: 
@@ -254,12 +257,11 @@ void hiss_val_println(hiss_val* val){
 }
 
 void hiss_env_del(hiss_env* e){
-  unsigned int i;
-  for(i = 0; i < e->type_count; i++) free(e->types[i]);
-
   hiss_table_delete(e->vals);
+  hiss_type_delete(e->types);
 
   free(e->vals);
+  free(e->types);
   free(e);
 }
 
@@ -567,7 +569,7 @@ hiss_val* hiss_val_copy(const hiss_val* val){
     case HISS_NUM: c->num = val->num; break;
     case HISS_USR: 
         c->type_name = val->type_name; 
-        c->fgormals = hiss_val_copy(val->formals);
+        c->formals = hiss_val_copy(val->formals);
         break;
     case HISS_STR: 
         c->str = (char*) malloc(strlen(val->str + 1)); 
@@ -605,22 +607,23 @@ hiss_val* hiss_env_get(hiss_env* e, hiss_val* k){
   return hiss_err("unbound symbol: %s", k->sym);
 }
 
+hiss_val* hiss_env_type_get(hiss_env* e, const char* k){
+  hiss_val* v = hiss_val_copy(hiss_type_get(e->types, k));
+
+  if(v) return v;
+
+  if(e->par)
+      return hiss_env_type_get(e->par, k);
+  
+  return hiss_err("unbound symbol: %s", k);
+}
+
 void hiss_env_put(hiss_env* e, hiss_val* k, hiss_val* v){
-  unsigned int i;
-
-
-  for(i = 0; i < e->type_count; i++){
-      if(strcmp(e->types[i], k->type_name) == 0)
-          return;
-  }
-
-  if(k->type == HISS_USR){ 
-      e->type_count++;
-      e->types[e->type_count-1] = k->type_name;
-      return;
-  }
-
   hiss_table_insert(e->vals, k, v);
+}
+
+void hiss_env_type_put(hiss_env* e, const char* k, hiss_val* v){
+  hiss_type_insert(e->types, k, v);
 }
 
 hiss_val* hiss_val_eval(hiss_env* e, hiss_val* v){
@@ -747,15 +750,16 @@ static hiss_val* builtin_put(hiss_env* e, hiss_val* a){
 }
 
 static hiss_val* builtin_type(hiss_env* e, hiss_val* a){
-    unsigned int i;
+    hiss_val *v;
 
     HISS_ASSERT_NUM("type?", a, 1);
 
     if(a->type != HISS_USR) return hiss_val_str(hiss_type_name(a->type));
 
-    for(i = 0; i < e->type_count; i++)
-        if(strcmp(e->types[i], a->cells[0]->type_name) == 0)
-                return hiss_val_str(a->type_name);
+    v = hiss_env_type_get(e, a->type_name);
+    if(v){
+        return hiss_val_str(a->type_name);
+    }
     
     return hiss_val_bool(HISS_FALSE);
 }
@@ -784,42 +788,30 @@ void hiss_env_add_builtin(hiss_env* e, const char* name, hiss_builtin fun){
   hiss_val_del(v);
 }
 
-static hiss_val* hiss_eval_type(hiss_env* e, hiss_val* a){
-    /*nothing here*/
-  hiss_val* f = NULL;
-  hiss_val* err = NULL;
-  hiss_val* result = NULL;
+void hiss_env_add_type(hiss_env* e, hiss_val* type){
+    if(type->type != HISS_USR) return;
 
-  for(i = 0; i < v->count; i++)
-    v->cells[i] = hiss_val_eval(e, v->cells[i]);
-  
-  for(i = 0; i < v->count; i++)
-    if(v->cells[i]->type == HISS_ERR) return hiss_val_take(v, i);
+    hiss_env_type_put(e, type->type_name, type);
+}
 
-  if(v->count == 0) return v; 
-  if(v->count == 1) return hiss_val_take(v, 0);
+static hiss_val* builtin_const(hiss_env* e, hiss_val* a){
+  hiss_val* v;
+  unsigned int actual = a->count-1;
+  unsigned int expected;
+  HISS_ASSERT_TYPE("const", a, 0, HISS_SYM);
 
-  f = hiss_val_pop(v, 0);
-  if(f->type != HISS_FUN){
-    err = hiss_err("S-Expression starts with incorrect type. Got %s, expected %s.",
-                   hiss_type_name(f->type), hiss_type_name(HISS_FUN));
-    hiss_val_del(v); 
-    hiss_val_del(f);
-    return err;
+  v = hiss_env_type_get(e, a->cells[0]->sym);
+
+  if(v){
+      expected = v->formals->count;
+      
+      if(expected != actual) 
+          return hiss_err("Type %s expects %i arguments, got %i", a->cells[0]->sym, expected, actual);
+
+     //And now? 
   }
-
-  result = hiss_val_call(e, f, v);
-  hiss_val_del(f);
-  return result;
+  return NULL;
 }
-
-void hiss_env_add_type(hiss_env* e, hiss_val* a){
-  if(a->type != HISS_USR) return;
-
-  hiss_env_add_builtin(e, a->type_name, hiss_eval_type);
-}
-
-
 
 void hiss_env_add_builtins(hiss_env* e){  
   hiss_env_add_builtin(e, "def", builtin_def);
@@ -847,6 +839,7 @@ void hiss_env_add_builtins(hiss_env* e){
   hiss_env_add_builtin(e, "eval", builtin_eval);
   hiss_env_add_builtin(e, "join", builtin_join);
   hiss_env_add_builtin(e, "type?", builtin_type);
+  hiss_env_add_builtin(e, "const", builtin_const);
   hiss_env_add_builtin(e, "shell", builtin_shell);
 
   hiss_env_add_builtin(e, "+", builtin_add);
@@ -897,7 +890,7 @@ static hiss_val* hiss_val_call(hiss_env* e, hiss_val* f, hiss_val* a){
             break;
         }
 
-        if(f->formals->count == 0){
+        if(expected == 0){
             hiss_val_del(a);
             return hiss_err("Function passed too many arguments. Got %i, expected %i.",
                             actual, expected);

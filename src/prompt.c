@@ -127,7 +127,7 @@ int repl(const char* f){
             }
 
             if(vpc_parse("stdin", input, hiss, &r)){
-                hiss_val* x = hiss_val_eval(e, hiss_val_read((vpc_ast*)r.output));
+                x = hiss_val_eval(e, hiss_val_read((vpc_ast*)r.output));
                 hiss_env_add_type(e, x);
                 hiss_val_println(x);
                 hiss_val_del(x);

@@ -16,7 +16,7 @@ all:
 
 #Uses picky extensions and makes everything(Extensions may break compiling)
 dev:
-	make all CFLAGS+=-v -Wshadow -Wunreachable-code -Wswitch-enum -Wswitch-default -Wcast-align -Winit-self -Wpointer-arith
+	make all CFLAGS+=-Wshadow -Wunreachable-code -Wswitch-enum -Wswitch-default -Wcast-align -Winit-self -Wpointer-arith
 
 #Cleans directory(no uninstall!)
 clean: 

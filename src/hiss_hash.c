@@ -75,7 +75,7 @@ static void grow(hiss_hashtable* hasht){
 
     tmp = hiss_table_copy(hasht);
 
-    // By God, you're ugly
+    /* By God, you're ugly*/
     swap = *hasht;
     *hasht = *tmp;
     *tmp = swap;

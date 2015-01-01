@@ -2,6 +2,7 @@ STD=c11
 override CFLAGS+=-Werror -Wall -g -fPIC -O2 -DNDEBUG -ftrapv -Wfloat-equal -Wundef -Wwrite-strings -Wconversion -Wuninitialized -pedantic -std=$(STD)
 PREFIX=/usr/bin/
 BUILDDIR=bin/
+DEBUGDIR=debug/
 LIBS=-ledit
 
 CC=cc
@@ -11,16 +12,36 @@ SOURCES=$(wildcard src/*.c)
 
 #Makes everything
 all:
-	mkdir -p $(BUILDDIR)  2> /dev/null || true
+	mkdir -p $(BUILDDIR)  2> /dev/null
 	$(CC) $(CFLAGS) $(LIBS) $(SOURCES) -o $(BUILDDIR)$(TARGET)
 
 #Uses picky extensions and makes everything(Extensions may break compiling)
 dev:
-	make all CFLAGS+=-Wshadow -Wunreachable-code -Wswitch-enum -Wswitch-default -Wcast-align -Winit-self -Wpointer-arith
+	make all CFLAGS+="-Wshadow -Wunreachable-code -Wswitch-enum -Wswitch-default -Wcast-align -Winit-self -Wpointer-arith"
+
+#Run the preprocessor only
+pp:
+	mkdir -p $(DEBUGDIR) 2> /dev/null
+	$(CC) -E $(LIBS) $(SOURCES) > $(DEBUGDIR)preprocessed.i
+
+#Run the preprocessor and asm generator
+asm:
+	mkdir -p $(DEBUGDIR) 2> /dev/null
+	$(CC) -S $(LIBS) $(SOURCES)
+	mv *.s $(DEBUGDIR)
+
+#Create object code
+obj:
+	mkdir -p $(DEBUGDIR) 2> /dev/null
+	$(CC) -c $(LIBS) $(SOURCES)
+	mv *.o $(DEBUGDIR)
+
+#Make all diagnostics files
+diagnostics: pp asm obj
 
 #Cleans directory(no uninstall!)
 clean: 
-	rm -rf $(BUILDDIR)
+	rm -rf $(BUILDDIR) $(DEBUGDIR)
 
 #Installs into specified(or default) directory
 install:

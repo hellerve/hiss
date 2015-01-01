@@ -51,13 +51,13 @@ static __inline int ends_with(const char* str, const char* suffix){
 static __inline char* parse_arguments(int argc, char** argv){
     int i;
 
-    for(i = 1; i < argc; i++){
+    for(i = 1; i < argc; ){
         if(strcmp(argv[i], "-v") == 0){
             printf(VERSION);
             exit(0);
         } if(ends_with(argv[i], ".his")){
             return argv[i];
-        }else {
+        } else {
             printf(USAGE);
             exit(127);
         }

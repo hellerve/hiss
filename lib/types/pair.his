@@ -1,5 +1,8 @@
 (load ".stdlib")
-(type:pair)
+(type:pair {first second})
+
+(fun {make_pair h t}{
+     (const pair {h t})})
 
 (fun {pair? c}{
      (if (== (type? c) "pair"))
@@ -8,10 +11,10 @@
 
 (fun {car c}{
      (if (pair? c))
-        {c (lambda(t a d) a)}
+        {from c first}
         {error "Argument is not a pair"}})
 
 {fun {cdr c}{
     (if (pair? c))
-        {c (lambda(t a d) d)}
+        {from c second}
         {error "Argument is not a pair"}})

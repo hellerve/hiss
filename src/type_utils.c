@@ -235,7 +235,7 @@ void hiss_val_print(hiss_val* val){
         case HISS_USR: 
             printf("<type %s: ", val->type_name);
             hiss_val_print(val->formals);
-            printf(">");
+            putchar('>');
             break;
         case HISS_FUN: 
             if(val->fun){
@@ -795,7 +795,8 @@ void hiss_env_add_type(hiss_env* e, hiss_val* type){
 }
 
 static hiss_val* builtin_const(hiss_env* e, hiss_val* a){
-  hiss_val* v;
+  hiss_val* v = NULL;
+  hiss_val* formals = NULL;
   unsigned int actual = a->count-1;
   unsigned int expected;
   HISS_ASSERT_TYPE("const", a, 0, HISS_SYM);
@@ -808,9 +809,42 @@ static hiss_val* builtin_const(hiss_env* e, hiss_val* a){
       if(expected != actual) 
           return hiss_err("Type %s expects %i arguments, got %i", a->cells[0]->sym, expected, actual);
 
-     //And now? 
+    formals = hiss_val_pop(v, 0);
+    hiss_val_del(v);
+  
+     //And now?
   }
   return NULL;
+}
+
+static hiss_val* builtin_from(hiss_env* e, hiss_val* a){
+  hiss_val* x = NULL;
+  hiss_val* y = NULL;
+  unsigned int i;
+  unsigned short found = HISS_FALSE;
+  if(a->cells[0]->type == HISS_SYM && a->cells[1]->type == HISS_SYM){
+    x = hiss_env_get(e, a->cells[0]);
+    
+    if(x->type == HISS_ERR){
+        x = hiss_err("Symbol %s could not be found in environment.", a->cells[0]->sym);
+    } else {
+        for(i = 0; i < x->formals->count; i++){
+            y = hiss_val_pop(x->formals, 0);
+            if(strcmp(y->sym, a->cells[1]->sym) == 0){
+                x = y;
+                found = HISS_TRUE;
+                break;
+            }
+        }
+        if(!found)
+            x = hiss_err("Symbol %s could not be found in %s.", a->cells[0]->sym, x->sym);
+    }
+
+    hiss_val_del(a);
+    hiss_val_del(y);
+    return x;
+  }
+  return hiss_err("Both arguments to from must be symbols.");
 }
 
 void hiss_env_add_builtins(hiss_env* e){  
@@ -840,6 +874,7 @@ void hiss_env_add_builtins(hiss_env* e){
   hiss_env_add_builtin(e, "join", builtin_join);
   hiss_env_add_builtin(e, "type?", builtin_type);
   hiss_env_add_builtin(e, "const", builtin_const);
+  hiss_env_add_builtin(e, "from", builtin_from);
   hiss_env_add_builtin(e, "shell", builtin_shell);
 
   hiss_env_add_builtin(e, "+", builtin_add);

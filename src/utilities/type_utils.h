@@ -4,29 +4,17 @@
 #include <errno.h>
 #include <string.h>
 
-#include "parser.h"
 #include "hiss_hash.h"
 #include "hiss_type_table.h"
 #include "util.h"
+#include "type_management.h"
+
+#include "../core/parser.h"
+#include "../types/types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/*
- * Constructor functions
- */
-
-hiss_env* hiss_env_new();
-hiss_val* hiss_val_num(long n);
-hiss_val* hiss_val_bool(unsigned short n);
-hiss_val* hiss_val_sym(const char* s);
-hiss_val* hiss_val_str(const char* s);
-hiss_val* hiss_val_fun(hiss_builtin fun);
-hiss_val* hiss_val_lambda(hiss_val* formals, hiss_val* body);
-hiss_val* hiss_val_sexpr();
-hiss_val* hiss_val_qexpr();
-hiss_val* hiss_err(const char* fmt, ...);
 
 /*
  * Helper functions
@@ -52,13 +40,6 @@ void hiss_env_add_builtin(hiss_env* e, const char* name, hiss_builtin fun);
 void hiss_env_add_builtins(hiss_env* e);
 void hiss_env_add_type(hiss_env* e, hiss_val* a);
 hiss_val* builtin_load(hiss_env* e, hiss_val* a);
-
-/*
- * Destructor functions
- */
-
-void hiss_env_del(hiss_env* e);
-void hiss_val_del(hiss_val* val);
 
 /*
  * Evaluation functions

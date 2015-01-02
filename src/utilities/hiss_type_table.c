@@ -50,7 +50,7 @@ void hiss_type_delete(hiss_type_table* hasht){
             next = e->next;
 
             free((char*)e->key);
-            free((hiss_val*)e->value);
+            free((struct hiss_val*)e->value);
             free(e);
         }
     }
@@ -83,7 +83,7 @@ static void grow(hiss_type_table* hasht){
     hiss_type_delete(tmp);
 }
 
-void hiss_type_insert(hiss_type_table* hasht, const char* key, const hiss_val* value){
+void hiss_type_insert(hiss_type_table* hasht, const char* key, const struct hiss_val* value){
     hiss_type_entry* e;
     unsigned long h;
 
@@ -107,7 +107,7 @@ void hiss_type_insert(hiss_type_table* hasht, const char* key, const hiss_val* v
     if(hasht->n >= hasht->size * MAX_LOAD) grow(hasht);
 }
 
-const hiss_val* hiss_type_get(hiss_type_table* hasht, const char* key){
+const struct hiss_val* hiss_type_get(hiss_type_table* hasht, const char* key){
     hiss_type_entry* e;
 
     for(e = hasht->table[hiss_hash(key) % hasht->size]; e; e = e->next)
@@ -125,8 +125,8 @@ void hiss_type_remove(hiss_type_table* hasht, const char* key){
             e = *prev;
             *prev = e->next;
 
-            free((hiss_val*)e->key);
-            free((hiss_val*)e->value);
+            free(e);
+            hiss_val_del((hiss_val*)e->value);
             free(e);
 
             return;

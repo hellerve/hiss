@@ -128,8 +128,8 @@ void hiss_table_remove(hiss_hashtable* hasht, const hiss_val* key){
             e = *prev;
             *prev = e->next;
 
-            free((hiss_val*)e->key);
-            free((hiss_val*)e->value);
+            hiss_val_del((hiss_val*)e->key);
+            hiss_val_del((hiss_val*)e->value);
             free(e);
 
             return;

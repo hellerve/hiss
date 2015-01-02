@@ -1,9 +1,9 @@
 #ifndef GC
 #define GC
 
-#include "types.h"
-#include "util.h"
-#include "hiss_hash.h"
+#include "../utilities/util.h"
+#include "../utilities/hiss_hash.h"
+#include "../types/tables.h"
 
 #ifdef __cplusplus
 extern "C" {

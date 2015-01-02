@@ -8,7 +8,7 @@ LIBS=-ledit
 CC=cc
 
 TARGET=hiss
-SOURCES=$(wildcard src/*.c)
+SOURCES=$(wildcard src/*/*.c)
 
 #Makes everything
 all:

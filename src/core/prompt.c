@@ -2,7 +2,7 @@
 #include <string.h>
 
 #include "parser.h"
-#include "type_utils.h"
+#include "../utilities/type_utils.h"
 
 #ifdef _WIN32
 

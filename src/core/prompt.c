@@ -113,6 +113,7 @@ int repl(const char* f){
     if(f){
         args = hiss_val_add(hiss_val_sexpr(), hiss_val_str(f));
         x = builtin_load(e, args);
+
         if(x->type == HISS_ERR) hiss_val_println(x);
         hiss_val_del(x);
     }else{

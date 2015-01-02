@@ -712,6 +712,31 @@ static hiss_val* builtin_from(hiss_env* e, hiss_val* a){
   return hiss_err("Both arguments to from must be symbols.");
 }
 
+static hiss_val* builtin_print(hiss_env* e, hiss_val* a){
+    unsigned int i;
+
+    for(i = 0; i < a->count; i++){
+        hiss_val_print(a->cell[i]);
+        putchar(' ');
+    }
+
+    putchar('\n');
+
+    hiss_val_del(a);
+
+    return hiss_val_bool(HISS_TRUE);
+}
+
+static hiss_val* builtin_error(hiss_env* e, hiss_val* a){
+    HISS_ASSERT_NUM("error", a, 1);
+    HISS_ASSERT_TYPE("error", a, 0, HISS_STR);
+
+    hiss_err* err = hiss_err(a->cell[0]->str);
+
+    hiss_val_del(a);
+    return err;
+}
+
 void hiss_env_add_builtins(hiss_env* e){  
   hiss_env_add_builtin(e, "def", builtin_def);
   hiss_env_add_builtin(e, "=", builtin_put);
@@ -741,6 +766,8 @@ void hiss_env_add_builtins(hiss_env* e){
   hiss_env_add_builtin(e, "const", builtin_const);
   hiss_env_add_builtin(e, "from", builtin_from);
   hiss_env_add_builtin(e, "shell", builtin_shell);
+  hiss_env_add_builtin(e, "print", builtin_print);
+  hiss_env_add_builtin(e, "error", builtin_error);
 
   hiss_env_add_builtin(e, "+", builtin_add);
   hiss_env_add_builtin(e, "-", builtin_sub);

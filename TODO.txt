@@ -1,4 +1,3 @@
 Finish Parser!
 Types are incomplete: can not create types
 Type parsing
-fix hash and type table to use hiss_val constructor and destructor

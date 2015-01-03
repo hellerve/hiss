@@ -84,14 +84,14 @@ int repl(const char* f){
     hiss_val* x = NULL;
     hiss_val* args = NULL;
     hiss_env* e = NULL;
-    vpc_parser* number = vpc_new("number");
-    vpc_parser* symbol = vpc_new("symbol");
-    vpc_parser* string = vpc_new("string");
-    vpc_parser* comment = vpc_new("comment");
-    vpc_parser* s_expression  = vpc_new("s_expression");
-    vpc_parser* q_expression  = vpc_new("q_expression");
-    vpc_parser* expression   = vpc_new("expression");
-    vpc_parser* hiss  = vpc_new("hiss");
+    number = vpc_new("number");
+    symbol = vpc_new("symbol");
+    string = vpc_new("string");
+    comment = vpc_new("comment");
+    s_expression  = vpc_new("s_expression");
+    q_expression  = vpc_new("q_expression");
+    expression   = vpc_new("expression");
+    hiss  = vpc_new("hiss");
 
     vpca_lang(VPCA_LANG_DEFAULT,
         "number        : /-?[0-9]+/;                              \

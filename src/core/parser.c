@@ -1207,14 +1207,24 @@ int vpc_parse_pipe(const char* filename, FILE* pipe, vpc_parser* p, vpc_result* 
   return x;
 }
 
-int vpc_parse_contents(const char* filename, vpc_parser* p, vpc_result* r){
+int vpc_parse_contents(char* filename, vpc_parser* p, vpc_result* r){
+  char* tmp;
   FILE* f = fopen(filename, "rb");
   int res;
   
   if(f == NULL){
-    r->output = NULL;
-    r->error = vpc_err_fail(filename, vpc_state_new(), "Unable to open file!");
-    return 0;
+    /*WARNING: THIS IS HISS_SPECFIC!*/
+    tmp = (char*) realloc(filename, strlen(filename) + strlen("/module.his"));
+    if(tmp){
+        filename = tmp;
+        tmp = 0;
+        f = fopen(strcat(filename, "/module.his"), "rb");
+    }
+    if(f == NULL){
+        r->output = NULL;
+        r->error = vpc_err_fail(filename, vpc_state_new(), "Unable to open file!");
+        return 0;
+    }
   }
   
   res = vpc_parse_file(filename, f, p, r);

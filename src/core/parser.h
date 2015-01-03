@@ -59,7 +59,7 @@ typedef struct vpc_parser vpc_parser;
 int vpc_parse(const char *filename, const char *string, vpc_parser *p, vpc_result *r);
 int vpc_parse_file(const char *filename, FILE *file, vpc_parser *p, vpc_result *r);
 int vpc_parse_pipe(const char *filename, FILE *pipe, vpc_parser *p, vpc_result *r);
-int vpc_parse_contents(const char *filename, vpc_parser *p, vpc_result *r);
+int vpc_parse_contents(char *filename, vpc_parser *p, vpc_result *r);
 
 /*
 ** Function Types

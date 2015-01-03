@@ -1,3 +1,5 @@
 Finish Parser!
 Types are incomplete: can not create types
 Type parsing
+Tail call elimination
+Lexical Scoping

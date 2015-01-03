@@ -10,6 +10,7 @@
 #include "type_management.h"
 
 #include "../core/parser.h"
+#include "../core/grammar.h"
 #include "../types/types.h"
 
 #ifdef __cplusplus

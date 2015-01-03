@@ -503,6 +503,7 @@ hiss_val* hiss_val_eval(hiss_env* e, hiss_val* v){
 }
 
 hiss_val* hiss_val_eval_sexpr(hiss_env* e, hiss_val* v){
+  /* TODO: Tail call elimination */
   unsigned int i;
   hiss_val* f = NULL;
   hiss_val* err = NULL;
@@ -716,7 +717,7 @@ static hiss_val* builtin_print(hiss_env* e, hiss_val* a){
     unsigned int i;
 
     for(i = 0; i < a->count; i++){
-        hiss_val_print(a->cell[i]);
+        hiss_val_print(a->cells[i]);
         putchar(' ');
     }
 
@@ -728,14 +729,56 @@ static hiss_val* builtin_print(hiss_env* e, hiss_val* a){
 }
 
 static hiss_val* builtin_error(hiss_env* e, hiss_val* a){
+    hiss_val* err_message = NULL;
+
     HISS_ASSERT_NUM("error", a, 1);
     HISS_ASSERT_TYPE("error", a, 0, HISS_STR);
 
-    hiss_err* err = hiss_err(a->cell[0]->str);
+    err_message = hiss_err(a->cells[0]->str);
 
     hiss_val_del(a);
-    return err;
+    return err_message;
 }
+
+hiss_val* builtin_load(hiss_env* e, hiss_val* a){
+    vpc_result r;
+    hiss_val* expr = NULL;
+    hiss_val* x = NULL;
+    char* err_msg = NULL;
+
+    HISS_ASSERT_NUM("load", a, 1);
+    HISS_ASSERT_TYPE("load", a, 0, HISS_STR);
+
+    if(vpc_parse_contents(a->cells[0]->str, hiss, &r)){
+        expr = hiss_val_read(r.output);
+        vpc_ast_delete(r.output);
+
+        while(expr->count){
+            x = hiss_val_eval(e, hiss_val_pop(expr, 0));
+
+            if(x->type == HISS_ERR) hiss_val_println(x);
+
+            hiss_val_del(x);
+        }
+
+        hiss_val_del(expr);
+        hiss_val_del(a);
+
+        return hiss_val_bool(HISS_TRUE);
+    } else {
+        err_msg = vpc_err_string(r.error);
+        vpc_err_delete(r.error);
+
+        x = hiss_err("Could not load library %s", err_msg);
+
+        free(err_msg);
+
+        hiss_val_del(a);
+
+        return x;
+    }
+}
+
 
 void hiss_env_add_builtins(hiss_env* e){  
   hiss_env_add_builtin(e, "def", builtin_def);
@@ -762,6 +805,7 @@ void hiss_env_add_builtins(hiss_env* e){
   hiss_env_add_builtin(e, "tail", builtin_tail);
   hiss_env_add_builtin(e, "eval", builtin_eval);
   hiss_env_add_builtin(e, "join", builtin_join);
+  hiss_env_add_builtin(e, "load", builtin_load);
   hiss_env_add_builtin(e, "type?", builtin_type);
   hiss_env_add_builtin(e, "const", builtin_const);
   hiss_env_add_builtin(e, "from", builtin_from);

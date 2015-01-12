@@ -8,7 +8,7 @@
 
 (fun {zero?} {== curry 0})
 (fun {positive?} {> curry 0})
-(fun {negativ2?} {< curry 0})
+(fun {negative?} {< curry 0})
 
 (fun {len l} {
       if(== l {})

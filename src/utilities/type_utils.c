@@ -632,7 +632,7 @@ static hiss_val* builtin_type(hiss_env* e, hiss_val* a){
 
 static hiss_val* builtin_shell(hiss_env* e, hiss_val* a){
     unsigned int i;
-    int status;
+    int status = -1;
 
     for(i = 0; i < a->count; i++)
         HISS_ASSERT_TYPE("shell", a, i, HISS_STR);

@@ -261,7 +261,7 @@ static int vpc_err_contains_expected(vpc_err* container, char* expected){
 
 static void vpc_err_add_expected(vpc_err* add_to, char* expected){
     add_to->expected_count++;
-    add_to->expected = (char**) realloc(add_to->expected, sizeof(char*) * (long unsigned int) add_to->expected_count);
+    add_to->expected = (char**) realloc(add_to->expected, sizeof(char*) * add_to->expected_count);
     add_to->expected[add_to->expected_count-1] = (char*) malloc(strlen(expected) + 1);
     strcpy(add_to->expected[add_to->expected_count-1], expected);
 }
@@ -272,7 +272,7 @@ static void vpc_err_clear_expected(vpc_err* clear_from, char* expected){
         free(clear_from->expected[i]);
     
     clear_from->expected_count = 1;
-    clear_from->expected = (char**) realloc(clear_from->expected, sizeof(char*) * (long unsigned int) clear_from->expected_count);
+    clear_from->expected = (char**) realloc(clear_from->expected, sizeof(char*) * clear_from->expected_count);
     clear_from->expected[0] = (char*) malloc(strlen(expected) + 1);
     strcpy(clear_from->expected[0], expected);
 }
@@ -989,6 +989,31 @@ static vpc_parser* vpc_undefined(void){
 }
 
 /*
+ * Common Parser functions
+ */
+
+static int vpc_soi_anchor(char prev, char next){ 
+    (void) next; 
+    return (prev == '\0'); 
+}
+
+static int vpc_eoi_anchor(char prev, char next){ 
+    (void) prev; 
+    return (next == '\0'); 
+}
+
+static int vpc_boundary_anchor(char prev, char next){
+  const char* word = "abcdefghijklmnopqrstuvwxyz"
+                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                     "0123456789_";
+  if(strchr(word, next) &&  prev == '\0') return 1;
+  if(strchr(word, prev) &&  next == '\0') return 1;
+  if(strchr(word, next) && !strchr(word, prev)) return 1;
+  if(!strchr(word, next) &&  strchr(word, prev)) return 1;
+  return 0;
+}
+
+/*
  *  Exported functions
  */
 
@@ -1590,6 +1615,165 @@ vpc_parser* vpc_maybe_lift(vpc_parser* a, vpc_ctor lf){
 
 vpc_parser* vpc_maybe(vpc_parser* a){
   return vpc_maybe_lift(a, vpcf_ctor_null);
+}
+
+vpc_parser* vpc_many(vpc_fold f, vpc_parser* a){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_MANY;
+  p->data.repeat.x = a;
+  p->data.repeat.f = f;
+  return p;
+}
+
+vpc_parser* vpc_many1(vpc_fold f, vpc_parser* a){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_MANY1;
+  p->data.repeat.x = a;
+  p->data.repeat.f = f;
+  return p;
+}
+
+vpc_parser* vpc_count(unsigned int n, vpc_fold f, vpc_parser* a, vpc_dtor da){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_COUNT;
+  p->data.repeat.n = n;
+  p->data.repeat.f = f;
+  p->data.repeat.x = a;
+  p->data.repeat.dx = da;
+  return p;
+}
+
+vpc_parser* vpc_or(unsigned int n, ...){
+  unsigned int i;
+  va_list va;
+  vpc_parser* p = vpc_undefined();
+
+  p->type = VPC_TYPE_OR;
+  p->data.or_op.n = n;
+  p->data.or_op.xs = malloc(sizeof(vpc_parser*) * n);
+
+  va_start(va, n);  
+  for(i = 0; i < n; i++){
+    p->data.or_op.xs[i] = va_arg(va, vpc_parser*);
+  }
+  va_end(va);
+
+  return p;
+}
+
+vpc_parser* vpc_and(unsigned int n, vpc_fold f, ...){
+  unsigned int i;
+  va_list va;
+  vpc_parser* p = vpc_undefined();
+
+  p->type = VPC_TYPE_AND;
+  p->data.and_op.n = n;
+  p->data.and_op.f = f;
+  p->data.and_op.xs = malloc(sizeof(vpc_parser*) * n);
+  p->data.and_op.dxs = malloc(sizeof(vpc_dtor) * (n-1));
+
+  va_start(va, f);  
+  for(i = 0; i < n; i++) p->data.and_op.xs[i] = va_arg(va, vpc_parser*);
+  for(i = 0; i < (n-1); i++) p->data.and_op.dxs[i] = va_arg(va, vpc_dtor);
+  va_end(va);
+
+  return p;
+}
+
+/*
+ * Common Parser functions
+ */
+
+vpc_parser* vpc_soi(){ 
+    return vpc_expect(vpc_anchor(vpc_soi_anchor), "start of input"); 
+}
+
+vpc_parser* vpc_eoi(){ 
+    return vpc_expect(vpc_anchor(vpc_eoi_anchor), "end of input"); 
+}
+
+
+vpc_parser* vpc_boundary(){ 
+    return vpc_expect(vpc_anchor(vpc_boundary_anchor), "boundary"); 
+}
+
+vpc_parser* vpc_whitespace(){ 
+    return vpc_expect(vpc_oneof(" \f\n\r\t\v"), "whitespace"); 
+}
+
+vpc_parser* vpc_whitespaces(){ 
+    return vpc_expect(vpc_many(vpcf_strfold, vpc_whitespace()), "spaces"); 
+}
+
+vpc_parser* vpc_blank(){ 
+    return vpc_expect(vpc_parse_apply(vpc_whitespaces(), vpcf_free), "whitespace"); 
+}
+
+vpc_parser* vpc_newline(){ 
+    return vpc_expect(vpc_char('\n'), "newline"); 
+}
+
+vpc_parser* vpc_tab(){ 
+    return vpc_expect(vpc_char('\t'), "tab"); 
+}
+
+vpc_parser* vpc_escape(){ 
+    return vpc_and(2, vpcf_strfold, vpc_char('\\'), vpc_any(), free); 
+}
+
+vpc_parser* vpc_digit(){ return vpc_expect(vpc_oneof("0123456789"), "digit"); }
+
+vpc_parser* vpc_hexdigit(){ 
+    return vpc_expect(vpc_oneof("0123456789ABCDEFabcdef"), "hex digit"); 
+}
+
+vpc_parser* vpc_octdigit(){ 
+    return vpc_expect(vpc_oneof("01234567"), "oct digit"); 
+}
+
+vpc_parser* vpc_digits(){ 
+    return vpc_expect(vpc_many1(vpcf_strfold, vpc_digit()), "digits"); 
+}
+
+vpc_parser* vpc_hexdigits(){ 
+    return vpc_expect(vpc_many1(vpcf_strfold, vpc_hexdigit()), "hex digits"); 
+}
+
+vpc_parser* vpc_octdigits(){ 
+    return vpc_expect(vpc_many1(vpcf_strfold, vpc_octdigit()), "oct digits"); 
+}
+
+vpc_parser* vpc_lower(){ 
+    return vpc_expect(vpc_oneof("abcdefghijklmnopqrstuvwxyz"), "lowercase letter"); 
+}
+
+vpc_parser* vpc_upper(){ 
+    return vpc_expect(vpc_oneof("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), "uppercase letter"); 
+}
+vpc_parser* vpc_alpha(){ 
+    return vpc_expect(vpc_oneof("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), "letter"); 
+}
+
+vpc_parser* vpc_underscore(){ return vpc_expect(vpc_char('_'), "underscore"); }
+
+vpc_parser* vpc_alphanum(){ 
+    return vpc_expect(vpc_or(3, vpc_alpha(), vpc_digit(), vpc_underscore()), "alphanumeric"); 
+}
+
+vpc_parser* vpc_int(){ 
+    return vpc_expect(vpc_parse_apply(vpc_digits(), vpcf_int), "integer"); 
+}
+
+vpc_parser* vpc_hex(){ 
+    return vpc_expect(vpc_parse_apply(vpc_hexdigits(), vpcf_hex), "hexadecimal"); 
+}
+
+vpc_parser* vpc_oct(){ 
+    return vpc_expect(vpc_parse_apply(vpc_octdigits(), vpcf_oct), "octadecimal"); 
+}
+
+vpc_parser* vpc_number() 
+    { return vpc_expect(vpc_or(3, vpc_int(), vpc_hex(), vpc_oct()), "number"); 
 }
 
 

@@ -123,10 +123,10 @@ vpc_parser *vpc_maybe_lift(vpc_parser *a, vpc_ctor lf);
 
 vpc_parser *vpc_many(vpc_fold f, vpc_parser *a);
 vpc_parser *vpc_many1(vpc_fold f, vpc_parser *a);
-vpc_parser *vpc_count(int n, vpc_fold f, vpc_parser *a, vpc_dtor da);
+vpc_parser *vpc_count(unsigned int n, vpc_fold f, vpc_parser *a, vpc_dtor da);
 
-vpc_parser *vpc_or(int n, ...);
-vpc_parser *vpc_and(int n, vpc_fold f, ...);
+vpc_parser *vpc_or(unsigned int n, ...);
+vpc_parser *vpc_and(unsigned int n, vpc_fold f, ...);
 
 vpc_parser *vpc_predictive(vpc_parser *a);
 
@@ -235,7 +235,7 @@ vpc_val *vpcf_fst_free(int n, vpc_val** xs);
 vpc_val *vpcf_snd_free(int n, vpc_val** xs);
 vpc_val *vpcfrd_free(int n, vpc_val** xs);
 
-vpc_val *vpcf_strfold(int n, vpc_val** xs);
+vpc_val *vpcf_strfold(unsigned int n, vpc_val** xs);
 vpc_val *vpcf_maths(int n, vpc_val** xs);
 
 /*

@@ -81,7 +81,7 @@ vpc_parser *vpc_define(vpc_parser *p, vpc_parser *a);
 vpc_parser *vpc_undefine(vpc_parser *p);
 
 void vpc_delete(vpc_parser *p);
-void vpc_cleanup(int n, ...);
+void vpc_cleanup(unsigned int n, ...);
 
 /*
 ** Basic Parsers

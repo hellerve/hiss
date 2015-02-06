@@ -919,6 +919,76 @@ static vpc_err* vpc_stack_merger_err(vpc_stack* s, unsigned int n){
 }
 
 /*
+ * Parser building functions
+ */
+
+static void vpc_undefine_unretained(vpc_parser* p, unsigned int force);
+
+static void vpc_undefine_or(vpc_parser* p){
+  unsigned int i;
+  for(i = 0; i < p->data.or_op.n; i++)
+    vpc_undefine_unretained(p->data.or_op.xs[i], 0);
+  free(p->data.or_op.xs);
+}
+
+static void vpc_undefine_and(vpc_parser* p){
+  unsigned int i;
+  for(i = 0; i < p->data.and_op.n; i++)
+    vpc_undefine_unretained(p->data.and_op.xs[i], 0);
+  free(p->data.and_op.xs);
+  free(p->data.and_op.dxs);
+}
+
+static void vpc_undefine_unretained(vpc_parser* p, unsigned int force){
+  if(p->retained && !force) return;
+
+  switch(p->type){
+    case VPC_TYPE_FAIL: free(p->data.fail.m); break;
+    case VPC_TYPE_ONEOF: 
+    case VPC_TYPE_NONEOF:
+    case VPC_TYPE_STRING:
+      free(p->data.string.x); 
+      break;
+    case VPC_TYPE_APPLY:    vpc_undefine_unretained(p->data.apply.x, 0);    break;
+    case VPC_TYPE_APPLY_TO: vpc_undefine_unretained(p->data.apply_to.x, 0); break;
+    case VPC_TYPE_PREDICT:  vpc_undefine_unretained(p->data.predict.x, 0);  break;
+    case VPC_TYPE_MAYBE:
+    case VPC_TYPE_NOT:
+      vpc_undefine_unretained(p->data.not_op.x, 0);
+      break;
+    case VPC_TYPE_EXPECT:
+      vpc_undefine_unretained(p->data.expect.x, 0);
+      free(p->data.expect.m);
+      break;
+    case VPC_TYPE_MANY:
+    case VPC_TYPE_MANY1:
+    case VPC_TYPE_COUNT:
+      vpc_undefine_unretained(p->data.repeat.x, 0);
+      break;
+    case VPC_TYPE_OR:  vpc_undefine_or(p);  break;
+    case VPC_TYPE_AND: vpc_undefine_and(p); break;
+    default: break;
+  }
+
+  if (!force) {
+    free(p->name);
+    free(p);
+  }
+}
+
+static void vpc_soft_delete(vpc_val* x){
+  vpc_undefine_unretained(x, 0);
+}
+
+static vpc_parser* vpc_undefined(void){
+  vpc_parser* p = calloc(1, sizeof(vpc_parser));
+  p->retained = 0;
+  p->type = VPC_TYPE_UNDEFINED;
+  p->name = NULL;
+  return p;
+}
+
+/*
  *  Exported functions
  */
 
@@ -1182,7 +1252,6 @@ int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final){
   return vpc_stack_terminate(stk, final);
 }
 
-
 int vpc_parse(const char* filename, const char* string, vpc_parser* p, vpc_result* r){
   int x;
   vpc_input* i = vpc_input_new_string(filename, string);
@@ -1232,7 +1301,299 @@ int vpc_parse_contents(char* filename, vpc_parser* p, vpc_result* r){
   return res;
 }
 
-#undef vpc_CONTINUE
-#undef vpc_SUCCESS
-#undef vpc_FAILURE
-#undef vpc_PRIMATIVE
+/*
+ * Parser building functions
+ */
+void vpc_delete(vpc_parser* p){
+  if(p->retained){
+    if (p->type != VPC_TYPE_UNDEFINED) vpc_undefine_unretained(p, 0);
+
+    free(p->name);
+    free(p);
+  } else {
+    vpc_undefine_unretained(p, 0);  
+  }
+}
+
+vpc_parser* vpc_new(const char* name){
+  vpc_parser* p = vpc_undefined();
+  p->retained = 1;
+  p->name = (char*) realloc(p->name, strlen(name) + 1);
+  strcpy(p->name, name);
+  return p;
+}
+
+vpc_parser* vpc_undefine(vpc_parser* p){
+  vpc_undefine_unretained(p, 1);
+  p->type = VPC_TYPE_UNDEFINED;
+  return p;
+}
+
+vpc_parser* vpc_define(vpc_parser* p, vpc_parser* a){
+  if(p->retained){
+    p->type = a->type;
+    p->data = a->data;
+  } else {
+    vpc_parser* a2 = vpc_failf("Attempt to assign to Unretained Parser!");
+    p->type = a2->type;
+    p->data = a2->data;
+    free(a2);
+  }
+
+  free(a);
+  return p;  
+}
+
+void vpc_cleanup(unsigned int n, ...){
+  unsigned int i;
+  vpc_parser** list = malloc(sizeof(vpc_parser*) * n);
+  va_list va;
+
+  va_start(va, n);
+  for(i = 0; i < n; i++) list[i] = va_arg(va, vpc_parser*);
+  for(i = 0; i < n; i++) vpc_undefine(list[i]);
+  for(i = 0; i < n; i++) vpc_delete(list[i]); 
+  va_end(va);  
+
+  free(list);
+}
+
+vpc_parser* vpc_pass(){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_PASS;
+  return p;
+}
+
+vpc_parser* vpc_fail(const char* m){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_FAIL;
+  p->data.fail.m = (char*) malloc(strlen(m) + 1);
+  strcpy(p->data.fail.m, m);
+  return p;
+}
+
+/*
+ * As `snprintf` is not ANSI standard this 
+ * function `vpc_failf` should be considered
+ * unsafe.
+ *
+ * You have a few options if this is going to be
+ * trouble.
+ *
+ * - Ensure the format string does not exceed
+ *   the buffer length using precision specifiers
+ *   such as `%.512s`.
+ *
+ * - Patch this function in your code base to 
+ *   use `snprintf` or whatever variant your
+ *   system supports.
+ *
+ * - Avoid it altogether.
+ *
+ */
+
+vpc_parser* vpc_failf(const char* fmt, ...){
+  va_list va;
+  char* buffer;
+
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_FAIL;
+
+  va_start(va, fmt);
+  buffer = malloc(2048);
+  vsprintf(buffer, fmt, va);
+  va_end(va);
+
+  buffer = (char*) realloc(buffer, strlen(buffer) + 1);
+  p->data.fail.m = buffer;
+  return p;
+}
+
+vpc_parser* vpc_lift_val(vpc_val* x){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_LIFT_VAL;
+  p->data.lift.x = x;
+  return p;
+}
+
+vpc_parser* vpc_lift(vpc_ctor lf){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_LIFT;
+  p->data.lift.lf = lf;
+  return p;
+}
+
+vpc_parser* vpc_anchor(int(*f)(char,char)){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_ANCHOR;
+  p->data.anchor.f = f;
+  return p;
+}
+
+vpc_parser* vpc_state(){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_STATE;
+  return p;
+}
+
+vpc_parser* vpc_expect(vpc_parser* a, const char* expected){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_EXPECT;
+  p->data.expect.x = a;
+  p->data.expect.m = (char*) malloc(strlen(expected) + 1);
+  strcpy(p->data.expect.m, expected);
+  return p;
+}
+
+/*
+ * As `snprintf` is not ANSI standard this 
+ * function `vpc_expectf` should be considered
+ * unsafe.
+ *
+ * You have a few options if this is going to be
+ * trouble.
+ *
+ * - Ensure the format string does not exceed
+ *   the buffer length using precision specifiers
+ *   such as `%.512s`.
+ *
+ * - Patch this function in your code base to 
+ *   use `snprintf` or whatever variant your
+ *   system supports.
+ *
+ * - Avoid it altogether.
+ *
+ */
+
+vpc_parser* vpc_expectf(vpc_parser* a, const char* fmt, ...){
+  va_list va;
+  char* buffer;
+
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_EXPECT;
+
+  va_start(va, fmt);
+  buffer = malloc(2048);
+  vsprintf(buffer, fmt, va);
+  va_end(va);
+
+  buffer = realloc(buffer, strlen(buffer) + 1);
+  p->data.expect.x = a;
+  p->data.expect.m = buffer;
+  return p;
+}
+
+/*
+ * Basic parser functions
+ */
+
+vpc_parser* vpc_any(){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_ANY;
+  return vpc_expect(p, "any character");
+}
+
+vpc_parser* vpc_char(char c){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_SINGLE;
+  p->data.single.x = c;
+  return vpc_expectf(p, "'%c'", c);
+}
+
+vpc_parser* vpc_range(char s, char e){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_RANGE;
+  p->data.range.x = s;
+  p->data.range.y = e;
+  return vpc_expectf(p, "character between '%c' and '%c'", s, e);
+}
+
+vpc_parser* vpc_oneof(const char* s){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_ONEOF;
+  p->data.string.x = malloc(strlen(s) + 1);
+  strcpy(p->data.string.x, s);
+  return vpc_expectf(p, "one of '%s'", s);
+}
+
+vpc_parser* vpc_noneof(const char* s){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_NONEOF;
+  p->data.string.x = malloc(strlen(s) + 1);
+  strcpy(p->data.string.x, s);
+  return vpc_expectf(p, "one of '%s'", s);
+}
+
+vpc_parser* vpc_satisfy(int(*f)(char)){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_SATISFY;
+  p->data.satisfy.f = f;
+  return vpc_expectf(p, "character satisfying function %p", f);
+}
+
+vpc_parser* vpc_string(const char* s){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_STRING;
+  p->data.string.x = malloc(strlen(s) + 1);
+  strcpy(p->data.string.x, s);
+  return vpc_expectf(p, "\"%s\"", s);
+}
+
+/*
+ * Core parser functions
+ */
+
+vpc_parser* vpc_parse_apply(vpc_parser* a, vpc_apply f){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_APPLY;
+  p->data.apply.x = a;
+  p->data.apply.f = f;
+  return p;
+}
+
+vpc_parser* vpc_parse_apply_to(vpc_parser* a, vpc_apply_to f, void *x){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_APPLY_TO;
+  p->data.apply_to.x = a;
+  p->data.apply_to.f = f;
+  p->data.apply_to.d = x;
+  return p;
+}
+
+vpc_parser* vpc_predictive(vpc_parser* a){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_PREDICT;
+  p->data.predict.x = a;
+  return p;
+}
+
+vpc_parser* vpc_not_lift(vpc_parser* a, vpc_dtor da, vpc_ctor lf){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_NOT;
+  p->data.not_op.x = a;
+  p->data.not_op.dx = da;
+  p->data.not_op.lf = lf;
+  return p;
+}
+
+vpc_parser* vpc_not(vpc_parser* a, vpc_dtor da){
+  return vpc_not_lift(a, da, vpcf_ctor_null);
+}
+
+vpc_parser* vpc_maybe_lift(vpc_parser* a, vpc_ctor lf){
+  vpc_parser* p = vpc_undefined();
+  p->type = VPC_TYPE_MAYBE;
+  p->data.not_op.x = a;
+  p->data.not_op.lf = lf;
+  return p;
+}
+
+vpc_parser* vpc_maybe(vpc_parser* a){
+  return vpc_maybe_lift(a, vpcf_ctor_null);
+}
+
+
+#undef VPC_CONTINUE
+#undef VPC_SUCCESS
+#undef VPC_FAILURE
+#undef VPC_PRIMATIVE

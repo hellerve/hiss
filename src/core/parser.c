@@ -1014,6 +1014,203 @@ static int vpc_boundary_anchor(char prev, char next){
 }
 
 /*
+ * Regular Expression Parser functions
+ */
+
+/*
+ * So here is a cute bootstrapping.
+ *
+ * I'm using the previously defined
+ * vpc(sorry, dan) constructs and functions to
+ * parse the user regex string and
+ * construct a parser from it.
+ *
+ * As it turns out lots of the standard
+ * vpc functions look a lot like `fold`
+ * functions and so can be used indirectly
+ * by many of the parsing functions to build
+ * a parser directly - as we are parsing.
+ *
+ * This is certainly something that
+ * would be less elegant/interesting 
+ * in a two-phase parser which first
+ * builds an AST and then traverses it
+ * to generate the object.
+ *
+ * This whole thing acts as a great
+ * case study for how trivial it can be
+ * to write a great parser in a few
+ * lines of code using vpc.
+ */
+
+/*
+ *  ### Regular Expression Grammar
+ *
+ *      <regex> : <term> | (<term> "|" <regex>)
+ *     
+ *      <term> : <factor>*
+ *
+ *      <factor> : <base>
+ *               | <base> "*"
+ *               | <base> "+"
+ *               | <base> "?"
+ *               | <base> "{" <digits> "}"
+ *           
+ *      <base> : <char>
+ *             | "\" <char>
+ *             | "(" <regex> ")"
+ *             | "[" <range> "]"
+ */
+
+static vpc_val* vpcf_re_or(unsigned int n, vpc_val** xs){
+  (void) n;
+  if(xs[1] == NULL) return xs[0];
+  else return vpc_or(2, xs[0], xs[1]);
+}
+
+static vpc_val* vpcf_re_and(unsigned int n, vpc_val** xs){
+  unsigned int i;
+  vpc_parser* p = vpc_lift(vpcf_ctor_str);
+  for(i = 0; i < n; i++){
+    p = vpc_and(2, vpcf_strfold, p, xs[i], free);
+  }
+  return p;
+}
+
+static vpc_val* vpcf_re_repeat(unsigned int n, vpc_val** xs){
+  unsigned int num;
+  (void) n;
+  if(xs[1] == NULL) return xs[0];
+  if(strcmp(xs[1], "*") == 0){ free(xs[1]); return vpc_many(vpcf_strfold, xs[0]); }
+  if(strcmp(xs[1], "+") == 0){ free(xs[1]); return vpc_many1(vpcf_strfold, xs[0]); }
+  if(strcmp(xs[1], "?") == 0){ free(xs[1]); return vpc_maybe_lift(xs[0], vpcf_ctor_str); }
+  num = *(unsigned int*)xs[1];
+  free(xs[1]);
+
+  return vpc_count(num, vpcf_strfold, xs[0], free);
+}
+
+static vpc_parser* vpc_re_escape_char(char c){
+  switch(c){
+    case 'a': return vpc_char('\a');
+    case 'f': return vpc_char('\f');
+    case 'n': return vpc_char('\n');
+    case 'r': return vpc_char('\r');
+    case 't': return vpc_char('\t');
+    case 'v': return vpc_char('\v');
+    case 'b': return vpc_and(2, vpcf_snd, vpc_boundary(), vpc_lift(vpcf_ctor_str), free);
+    case 'B': return vpc_not_lift(vpc_boundary(), free, vpcf_ctor_str);
+    case 'A': return vpc_and(2, vpcf_snd, vpc_soi(), vpc_lift(vpcf_ctor_str), free);
+    case 'Z': return vpc_and(2, vpcf_snd, vpc_eoi(), vpc_lift(vpcf_ctor_str), free);
+    case 'd': return vpc_digit();
+    case 'D': return vpc_not_lift(vpc_digit(), free, vpcf_ctor_str);
+    case 's': return vpc_whitespace();
+    case 'S': return vpc_not_lift(vpc_whitespace(), free, vpcf_ctor_str);
+    case 'w': return vpc_alphanum();
+    case 'W': return vpc_not_lift(vpc_alphanum(), free, vpcf_ctor_str);
+    default: return NULL;
+  }
+}
+
+static vpc_val* vpcf_re_escape(vpc_val* x){
+  char* s = x;
+  vpc_parser* p;
+
+  /* Regex Special Characters */
+  if(s[0] == '.'){ free(s); return vpc_any(); }
+  if(s[0] == '^'){ free(s); return vpc_and(2, vpcf_snd, vpc_soi(), vpc_lift(vpcf_ctor_str), free); }
+  if(s[0] == '$'){ free(s); return vpc_and(2, vpcf_snd, vpc_eoi(), vpc_lift(vpcf_ctor_str), free); }
+
+  /* Regex Escape */
+  if(s[0] == '\\'){
+    p = vpc_re_escape_char(s[1]);
+    p = (p == NULL) ? vpc_char(s[1]) : p;
+    free(s);
+    return p;
+  }
+
+  /* Regex Standard */
+  p = vpc_char(s[0]);
+  free(s);
+  return p;
+}
+
+static const char* vpc_re_range_escape_char(char c){
+  switch(c){
+    case '-': return "-";
+    case 'a': return "\a";
+    case 'f': return "\f";
+    case 'n': return "\n";
+    case 'r': return "\r";
+    case 't': return "\t";
+    case 'v': return "\v";
+    case 'b': return "\b";
+    case 'd': return "0123456789";
+    case 's': return " \f\n\r\t\v";
+    case 'w': return "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
+    default: return NULL;
+  }
+}
+
+static vpc_val* vpcf_re_range(vpc_val* x){
+  vpc_parser* out;
+  char* range = calloc(1,1);
+  const char* tmp = NULL;
+  const char* s = x;
+  size_t comp = s[0] == '^' ? 1 : 0;
+  size_t start, end;
+  size_t i, j;
+
+  if(s[0] == '\0'){ free(x); return vpc_fail("Invalid Regex Range Expression"); } 
+  if(s[0] == '^' && 
+     s[1] == '\0'){ free(x); return vpc_fail("Invalid Regex Range Expression"); }
+
+  for(i = comp; i < strlen(s); i++){
+    /* Regex Range Escape */
+    if (s[i] == '\\') {
+      tmp = vpc_re_range_escape_char(s[i+1]);
+      if(tmp){
+        range = realloc(range, strlen(range) + strlen(tmp) + 1);
+        strcat(range, tmp);
+      } else {
+        range = realloc(range, strlen(range) + 1 + 1);
+        range[strlen(range) + 1] = '\0';
+        range[strlen(range) + 0] = s[i+1];      
+      }
+      i++;
+    }
+    /* Regex Range...Range */
+    else if(s[i] == '-'){
+      if(s[i+1] == '\0' || i == 0){
+          range = realloc(range, strlen(range) + strlen("-") + 1);
+          strcat(range, "-");
+      } else {
+        start = (size_t) s[i-1]+1;
+        end = (size_t) s[i+1]-1;
+        for(j = start; j <= end; j++){
+          range = realloc(range, strlen(range) + 1 + 1);
+          range[strlen(range) + 1] = '\0';
+          range[strlen(range) + 0] = (char) j;
+        }        
+      }
+    }
+    /* Regex Range Normal */
+    else {
+      range = realloc(range, strlen(range) + 1 + 1);
+      range[strlen(range) + 1] = '\0';
+      range[strlen(range) + 0] = s[i];
+    }
+  }
+
+  out = comp == 1 ? vpc_noneof(range) : vpc_oneof(range);
+
+  free(x);
+  free(range);
+
+  return out;
+}
+
+/*
  *  Exported functions
  */
 
@@ -1775,7 +1972,151 @@ vpc_parser* vpc_oct(){
 vpc_parser* vpc_number() 
     { return vpc_expect(vpc_or(3, vpc_int(), vpc_hex(), vpc_oct()), "number"); 
 }
+  
+vpc_parser* vpc_real(){
+  /* [+-]?\d+(\.\d+)?([eE][+-]?[0-9]+)? */
+  vpc_parser *p0, *p1, *p2, *p30, *p31, *p32, *p3;
 
+  p0 = vpc_maybe_lift(vpc_oneof("+-"), vpcf_ctor_str);
+  p1 = vpc_digits();
+  p2 = vpc_maybe_lift(vpc_and(2, vpcf_strfold, vpc_char('.'), vpc_digits(), free), vpcf_ctor_str);
+  p30 = vpc_oneof("eE");
+  p31 = vpc_maybe_lift(vpc_oneof("+-"), vpcf_ctor_str);
+  p32 = vpc_digits();
+  p3 = vpc_maybe_lift(vpc_and(3, vpcf_strfold, p30, p31, p32, free, free), vpcf_ctor_str);
+
+  return vpc_expect(vpc_and(4, vpcf_strfold, p0, p1, p2, p3, free, free, free), "real");
+}
+
+vpc_parser* vpc_float(){
+  return vpc_expect(vpc_parse_apply(vpc_real(), vpcf_float), "float");
+}
+
+vpc_parser* vpc_char_lit(){
+  return vpc_expect(vpc_between(vpc_or(2, vpc_escape(), vpc_any()), free, "'", "'"), "char");
+}
+
+vpc_parser* vpc_string_lit(){
+  vpc_parser* strchar = vpc_or(2, vpc_escape(), vpc_noneof("\""));
+  return vpc_expect(vpc_between(vpc_many(vpcf_strfold, strchar), free, "\"", "\""), "string");
+}
+
+vpc_parser* vpc_regex_lit(){  
+  vpc_parser* regexchar = vpc_or(2, vpc_escape(), vpc_noneof("/"));
+  return vpc_expect(vpc_between(vpc_many(vpcf_strfold, regexchar), free, "/", "/"), "regex");
+}
+
+vpc_parser* vpc_ident(){
+  vpc_parser *p0, *p1; 
+  p0 = vpc_or(2, vpc_alpha(), vpc_underscore());
+  p1 = vpc_many(vpcf_strfold, vpc_alphanum()); 
+  return vpc_and(2, vpcf_strfold, p0, p1, free);
+}
+
+/*
+ * Regular Expression Parser functions
+ */
+
+/*
+ * So here is a cute bootstrapping.
+ *
+ * I'm using the previously defined
+ * vpc(sorry, dan) constructs and functions to
+ * parse the user regex string and
+ * construct a parser from it.
+ *
+ * As it turns out lots of the standard
+ * vpc functions look a lot like `fold`
+ * functions and so can be used indirectly
+ * by many of the parsing functions to build
+ * a parser directly - as we are parsing.
+ *
+ * This is certainly something that
+ * would be less elegant/interesting 
+ * in a two-phase parser which first
+ * builds an AST and then traverses it
+ * to generate the object.
+ *
+ * This whole thing acts as a great
+ * case study for how trivial it can be
+ * to write a great parser in a few
+ * lines of code using vpc.
+ */
+
+/*
+ *  ### Regular Expression Grammar
+ *
+ *      <regex> : <term> | (<term> "|" <regex>)
+ *     
+ *      <term> : <factor>*
+ *
+ *      <factor> : <base>
+ *               | <base> "*"
+ *               | <base> "+"
+ *               | <base> "?"
+ *               | <base> "{" <digits> "}"
+ *           
+ *      <base> : <char>
+ *             | "\" <char>
+ *             | "(" <regex> ")"
+ *             | "[" <range> "]"
+ */
+vpc_parser* vpc_re(const char *re){
+  char *err_msg;
+  vpc_parser* err_out;
+  vpc_result r;
+  vpc_parser *Regex, *Term, *Factor, *Base, *Range, *RegexEnclose; 
+
+  Regex  = vpc_new("regex");
+  Term   = vpc_new("term");
+  Factor = vpc_new("factor");
+  Base   = vpc_new("base");
+  Range  = vpc_new("range");
+
+  vpc_define(Regex, vpc_and(2, vpcf_re_or,
+    Term, 
+    vpc_maybe(vpc_and(2, vpcf_snd_free, vpc_char('|'), Regex, free)),
+    (vpc_dtor)vpc_delete
+  ));
+
+  vpc_define(Term, vpc_many(vpcf_re_and, Factor));
+
+  vpc_define(Factor, vpc_and(2, vpcf_re_repeat,
+    Base,
+    vpc_or(5,
+      vpc_char('*'), vpc_char('+'), vpc_char('?'),
+      vpc_brackets(vpc_int(), free),
+      vpc_pass()),
+    (vpc_dtor)vpc_delete
+  ));
+
+  vpc_define(Base, vpc_or(4,
+    vpc_parens(Regex, (vpc_dtor)vpc_delete),
+    vpc_squares(Range, (vpc_dtor)vpc_delete),
+    vpc_parse_apply(vpc_escape(), vpcf_re_escape),
+    vpc_parse_apply(vpc_noneof(")|"), vpcf_re_escape)
+  ));
+
+  vpc_define(Range, vpc_parse_apply(
+    vpc_many(vpcf_strfold, vpc_or(2, vpc_escape(), vpc_noneof("]"))),
+    vpcf_re_range
+  ));
+
+  RegexEnclose = vpc_whole(vpc_predictive(Regex), (vpc_dtor)vpc_delete);
+
+  if(!vpc_parse("<vpc_re_compiler>", re, RegexEnclose, &r)) {
+    err_msg = vpc_err_string(r.error);
+    err_out = vpc_failf("Invalid Regex: %s", err_msg);
+    vpc_err_delete(r.error);  
+    free(err_msg);
+    r.output = err_out;
+  }
+
+  vpc_delete(RegexEnclose);
+  vpc_cleanup(5, Regex, Term, Factor, Base, Range);
+
+  return r.output;
+}
 
 #undef VPC_CONTINUE
 #undef VPC_SUCCESS

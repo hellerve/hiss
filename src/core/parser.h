@@ -228,11 +228,11 @@ vpc_val *vpcf_unescape_char_raw(vpc_val *x);
 
 vpc_val *vpcf_null(int n, vpc_val** xs);
 vpc_val *vpcf_fst(int n, vpc_val** xs);
-vpc_val *vpcf_snd(int n, vpc_val** xs);
+vpc_val *vpcf_snd(unsigned int n, vpc_val** xs);
 vpc_val *vpcfrd(int n, vpc_val** xs);
 
 vpc_val *vpcf_fst_free(int n, vpc_val** xs);
-vpc_val *vpcf_snd_free(int n, vpc_val** xs);
+vpc_val *vpcf_snd_free(unsigned int n, vpc_val** xs);
 vpc_val *vpcfrd_free(int n, vpc_val** xs);
 
 vpc_val *vpcf_strfold(unsigned int n, vpc_val** xs);

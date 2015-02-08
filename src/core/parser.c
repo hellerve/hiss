@@ -286,11 +286,13 @@ static void vpc_err_string_cat(char* buffer, int* pos, int* max, char const* fmt
     va_end(va);
 }
 
-static char char_unescape_buffer[3];
+static char char_unescape_buffer[4];
+
 static const char *vpc_err_char_unescape(char c) {
     char_unescape_buffer[0] = '\'';
     char_unescape_buffer[1] = ' ';
     char_unescape_buffer[2] = '\'';
+    char_unescape_buffer[3] = '\0';
 
     switch (c) {
         case '\a': return "bell";

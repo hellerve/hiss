@@ -188,7 +188,7 @@ typedef struct{
 #define VPC_CONTINUE(st, x){ vpc_stack_set_state(stk, st); if(!vpc_stack_pushp(stk, x)) break; continue; }
 #define VPC_SUCCESS(x){ vpc_stack_popp(stk, &p, &st); if(!vpc_stack_pushr(stk, vpc_result_out(x), 1)) break; continue; }
 #define VPC_FAILURE(x){ vpc_stack_popp(stk, &p, &st); if(!vpc_stack_pushr(stk, vpc_result_err(x), 0)) break; continue; }
-#define VPC_PRIMATIVE(x, f){ if(f) VPC_SUCCESS(x) else VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Incorrect Input"))}
+#define VPC_PRIMITIVE(x, f){ if(f) VPC_SUCCESS(x) else VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Incorrect Input"))}
 
 /*
  *  Static functions
@@ -1295,13 +1295,13 @@ int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final){
     vpc_stack_peepp(stk, &p, &st);
     switch (p->type) {
       /* Basic Parsers */
-      case VPC_TYPE_ANY:       VPC_PRIMATIVE(s, vpc_input_any(i, &s))
-      case VPC_TYPE_SINGLE:    VPC_PRIMATIVE(s, vpc_input_char(i, p->data.single.x, &s))
-      case VPC_TYPE_RANGE:     VPC_PRIMATIVE(s, vpc_input_range(i, p->data.range.x, p->data.range.y, &s))
-      case VPC_TYPE_ONEOF:     VPC_PRIMATIVE(s, vpc_input_oneof(i, p->data.string.x, &s))
-      case VPC_TYPE_NONEOF:    VPC_PRIMATIVE(s, vpc_input_noneof(i, p->data.string.x, &s))
-      case VPC_TYPE_SATISFY:   VPC_PRIMATIVE(s, vpc_input_satisfy(i, p->data.satisfy.f, &s))
-      case VPC_TYPE_STRING:    VPC_PRIMATIVE(s, vpc_input_string(i, p->data.string.x, &s))
+      case VPC_TYPE_ANY:       VPC_PRIMITIVE(s, vpc_input_any(i, &s))
+      case VPC_TYPE_SINGLE:    VPC_PRIMITIVE(s, vpc_input_char(i, p->data.single.x, &s))
+      case VPC_TYPE_RANGE:     VPC_PRIMITIVE(s, vpc_input_range(i, p->data.range.x, p->data.range.y, &s))
+      case VPC_TYPE_ONEOF:     VPC_PRIMITIVE(s, vpc_input_oneof(i, p->data.string.x, &s))
+      case VPC_TYPE_NONEOF:    VPC_PRIMITIVE(s, vpc_input_noneof(i, p->data.string.x, &s))
+      case VPC_TYPE_SATISFY:   VPC_PRIMITIVE(s, vpc_input_satisfy(i, p->data.satisfy.f, &s))
+      case VPC_TYPE_STRING:    VPC_PRIMITIVE(s, vpc_input_string(i, p->data.string.x, &s))
       
       /* Other parsers */
       case VPC_TYPE_UNDEFINED: VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Parser Undefined!"))
@@ -2123,4 +2123,4 @@ vpc_parser* vpc_re(const char *re){
 #undef VPC_CONTINUE
 #undef VPC_SUCCESS
 #undef VPC_FAILURE
-#undef VPC_PRIMATIVE
+#undef VPC_PRIMITIVE

@@ -231,12 +231,12 @@ vpc_val *vpcf_fst(unsigned int n, vpc_val** xs);
 vpc_val *vpcf_snd(unsigned int n, vpc_val** xs);
 vpc_val *vpcfrd(int n, vpc_val** xs);
 
-vpc_val *vpcf_fst_free(int n, vpc_val** xs);
+vpc_val *vpcf_fst_free(unsigned int n, vpc_val** xs);
 vpc_val *vpcf_snd_free(unsigned int n, vpc_val** xs);
-vpc_val *vpcfrd_free(int n, vpc_val** xs);
+vpc_val *vpcfrd_free(unsigned int n, vpc_val** xs);
 
 vpc_val *vpcf_strfold(unsigned int n, vpc_val** xs);
-vpc_val *vpcf_maths(int n, vpc_val** xs);
+vpc_val *vpcf_maths(unsigned int n, vpc_val** xs);
 
 /*
 ** Regular Expression Parsers
@@ -257,7 +257,7 @@ typedef struct vpc_ast {
 } vpc_ast;
 
 vpc_ast *vpc_ast_new(const char *tag, const char *contents);
-vpc_ast *vpc_ast_build(int n, const char *tag, ...);
+vpc_ast *vpc_ast_build(unsigned int n, const char *tag, ...);
 vpc_ast *vpc_ast_add_root(vpc_ast *a);
 vpc_ast *vpc_ast_add_child(vpc_ast *r, vpc_ast *a);
 vpc_ast *vpc_ast_addag(vpc_ast *a, const char *t);
@@ -273,9 +273,9 @@ void vpc_ast_printo(vpc_ast *a, FILE *fp);
 */
 int vpc_ast_eq(vpc_ast *a, vpc_ast *b);
 
-vpc_val *vpcf_fold_ast(int n, vpc_val **as);
+vpc_val *vpcf_fold_ast(unsigned int n, vpc_val **as);
 vpc_val *vpcf_str_ast(vpc_val *c);
-vpc_val *vpcf_state_ast(int n, vpc_val **xs);
+vpc_val *vpcf_state_ast(unsigned int n, vpc_val **xs);
 
 vpc_parser *vpcaag(vpc_parser *a, const char *t);
 vpc_parser *vpca_addag(vpc_parser *a, const char *t);
@@ -288,10 +288,10 @@ vpc_parser *vpca_maybe(vpc_parser *a);
 
 vpc_parser *vpca_many(vpc_parser *a);
 vpc_parser *vpca_many1(vpc_parser *a);
-vpc_parser *vpca_count(int n, vpc_parser *a);
+vpc_parser *vpca_count(unsigned int n, vpc_parser *a);
 
-vpc_parser *vpca_or(int n, ...);
-vpc_parser *vpca_and(int n, ...);
+vpc_parser *vpca_or(unsigned int n, ...);
+vpc_parser *vpca_and(unsigned int n, ...);
 
 enum {
   VPCA_LANG_DEFAULT              = 0,

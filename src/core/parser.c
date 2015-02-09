@@ -1243,6 +1243,215 @@ static vpc_val* vpcf_nth_free(unsigned int n, vpc_val** xs, unsigned int x){
   return xs[x];
 }
 
+static vpc_val* vpcf_escape_new(vpc_val* x, const char* input, const char* *output){
+  unsigned int i;
+  int found;
+  char *s = x;
+  char *y = calloc(1, 1);
+  char buff[2];
+
+  while(*s){
+    i = 0;
+    found = 0;
+
+    while(output[i]){
+      if(*s == input[i]){
+        y = realloc(y, strlen(y) + strlen(output[i]) + 1);
+        strcat(y, output[i]);
+        found = 1;
+        break;
+      }
+      i++;
+    }
+
+    if(!found){
+      y = realloc(y, strlen(y) + 2);
+      buff[0] = *s; 
+      buff[1] = '\0';
+      strcat(y, buff);
+    }
+    s++;
+  }
+  return y;
+}
+
+static vpc_val* vpcf_unescape_new(vpc_val* x, const char* input, const char** output){
+  unsigned int i;
+  int found = 0;
+  char *s = x;
+  char *y = calloc(1, 1);
+  char buff[2];
+
+  while(*s){
+    i = 0;
+    found = 0;
+
+    while(output[i]){
+      if((*(s+0)) == output[i][0] &&
+         (*(s+1)) == output[i][1]){
+        y = realloc(y, strlen(y) + 2);
+        buff[0] = input[i]; buff[1] = '\0';
+        strcat(y, buff);
+        found = 1;
+        s++;
+        break;
+      }
+      i++;
+    }
+
+    if(!found){
+      y = realloc(y, strlen(y) + 2);
+      buff[0] = *s; 
+      buff[1] = '\0';
+      strcat(y, buff);
+    }
+
+    if (*s == '\0') break;
+    else s++;
+  }
+  return y;
+}
+
+/*
+ *  Print functions
+ */
+
+static void vpc_print_unretained(vpc_parser* p, int force){
+  /* TODO: Print Everything Escaped */
+  unsigned int i;
+  char *s, *e;
+  char buff[2];
+
+  if(p->retained && !force){
+    if (p->name) printf("<%s>", p->name);
+    else printf("<anon>");
+    return;
+  }
+
+  if(p->type == VPC_TYPE_UNDEFINED) printf("<?>");
+  if(p->type == VPC_TYPE_PASS)   printf("<:>"); 
+  if(p->type == VPC_TYPE_FAIL)   printf("<!>"); 
+  if(p->type == VPC_TYPE_LIFT)   printf("<#>"); 
+  if(p->type == VPC_TYPE_STATE)  printf("<S>"); 
+  if(p->type == VPC_TYPE_ANCHOR) printf("<@>");
+  if(p->type == VPC_TYPE_EXPECT) printf("%s", p->data.expect.m);
+  if(p->type == VPC_TYPE_ANY)    printf("<.>");
+  if(p->type == VPC_TYPE_SATISFY) printf("<f>");
+
+  if(p->type == VPC_TYPE_SINGLE){
+    buff[0] = p->data.single.x; 
+    buff[1] = '\0';
+    s = vpcf_escape_new(
+      buff,
+      vpc_escape_input_c,
+      vpc_escape_output_c);
+    printf("'%s'", s);
+    free(s);
+  }
+
+  if(p->type == VPC_TYPE_RANGE){
+    buff[0] = p->data.range.x; 
+    buff[1] = '\0';
+    s = vpcf_escape_new(
+      buff,
+      vpc_escape_input_c,
+      vpc_escape_output_c);
+    buff[0] = p->data.range.y; 
+    buff[1] = '\0';
+    e = vpcf_escape_new(
+      buff,
+      vpc_escape_input_c,
+      vpc_escape_output_c);
+    printf("[%s-%s]", s, e);
+    free(s);
+    free(e);
+  }
+  if(p->type == VPC_TYPE_ONEOF){
+    s = vpcf_escape_new(
+      p->data.string.x,
+      vpc_escape_input_c,
+      vpc_escape_output_c);
+    printf("[%s]", s);
+    free(s);
+  }
+
+  if(p->type == VPC_TYPE_NONEOF){
+    s = vpcf_escape_new(
+      p->data.string.x,
+      vpc_escape_input_c,
+      vpc_escape_output_c);
+    printf("[^%s]", s);
+    free(s);
+  }
+
+  if(p->type == VPC_TYPE_STRING){
+    s = vpcf_escape_new(
+      p->data.string.x,
+      vpc_escape_input_c,
+      vpc_escape_output_c);
+    printf("\"%s\"", s);
+    free(s);
+  }
+
+  if(p->type == VPC_TYPE_APPLY)    vpc_print_unretained(p->data.apply.x, 0);
+  if(p->type == VPC_TYPE_APPLY_TO) vpc_print_unretained(p->data.apply_to.x, 0);
+  if(p->type == VPC_TYPE_PREDICT)  vpc_print_unretained(p->data.predict.x, 0);
+
+  if(p->type == VPC_TYPE_NOT)   { vpc_print_unretained(p->data.not_op.x, 0); putchar('!'); }
+  if(p->type == VPC_TYPE_MAYBE) { vpc_print_unretained(p->data.not_op.x, 0); putchar('?'); }
+
+  if(p->type == VPC_TYPE_MANY)  { vpc_print_unretained(p->data.repeat.x, 0); putchar('*'); }
+  if(p->type == VPC_TYPE_MANY1) { vpc_print_unretained(p->data.repeat.x, 0); putchar('+'); }
+  if(p->type == VPC_TYPE_COUNT) { vpc_print_unretained(p->data.repeat.x, 0); printf("{%i}", p->data.repeat.n); }
+
+  if(p->type == VPC_TYPE_OR){
+    putchar('(');
+    for(i = 0; i < p->data.or_op.n-1; i++) {
+      vpc_print_unretained(p->data.or_op.xs[i], 0);
+      printf(" | ");
+    }
+    vpc_print_unretained(p->data.or_op.xs[p->data.or_op.n-1], 0);
+    putchar(')');
+  }
+  if(p->type == VPC_TYPE_AND){
+    putchar('(');
+    for(i = 0; i < p->data.and_op.n-1; i++) {
+      vpc_print_unretained(p->data.and_op.xs[i], 0);
+      printf(" ");
+    }
+    vpc_print_unretained(p->data.and_op.xs[p->data.and_op.n-1], 0);
+    putchar(')');
+  }
+}
+
+/*
+ *  AST functions
+ */
+
+static void vpc_ast_delete_no_children(vpc_ast* a){
+  free(a->children);
+  free(a->tag);
+  free(a->contents);
+  free(a);
+}
+
+static void vpc_ast_print_depth(vpc_ast* a, unsigned int d, FILE* fp){
+  unsigned int i;
+  for (i = 0; i < d; i++) fprintf(fp, "  ");
+
+  if(strlen(a->contents)){
+    fprintf(fp, "%s:%lu:%lu '%s'\n", a->tag, 
+      (long unsigned int)(a->state.row+1),
+      (long unsigned int)(a->state.col+1),
+      a->contents);
+  }else{
+    fprintf(fp, "%s \n", a->tag);
+  }
+
+  for(i = 0; i < a->children_num; i++)
+    vpc_ast_print_depth(a->children[i], d+1, fp);
+}
+
 /*
  *  Exported functions
  */
@@ -1272,7 +1481,7 @@ void vpc_err_print(vpc_err* print){
     vpc_err_print_to(print, stdout);
 }
 
-char *vpc_err_string(vpc_err *e){
+char* vpc_err_string(vpc_err* e){
     char* buffer = (char*) calloc(1, 1024);
     int max = 1023;
     int pos = 0;
@@ -2047,6 +2256,87 @@ vpc_parser* vpc_ident(){
 }
 
 /*
+ * Useful Parser functions
+ */
+
+vpc_parser* vpc_startwith(vpc_parser* a){ 
+    return vpc_and(2, vpcf_snd, vpc_soi(), a, vpcf_dtor_null); 
+}
+
+vpc_parser* vpc_endwith(vpc_parser* a, vpc_dtor da){ 
+    return vpc_and(2, vpcf_fst, a, vpc_eoi(), da); 
+}
+
+vpc_parser* vpc_whole(vpc_parser* a, vpc_dtor da){ 
+    return vpc_and(3, vpcf_snd, vpc_soi(), a, vpc_eoi(), vpcf_dtor_null, da); 
+}
+
+vpc_parser* vpc_stripl(vpc_parser* a){ 
+    return vpc_and(2, vpcf_snd, vpc_blank(), a, vpcf_dtor_null); 
+}
+
+vpc_parser* vpc_stripr(vpc_parser* a){ 
+    return vpc_and(2, vpcf_fst, a, vpc_blank(), vpcf_dtor_null); 
+}
+
+vpc_parser* vpc_strip(vpc_parser* a){ 
+    return vpc_and(3, vpcf_snd, vpc_blank(), a, vpc_blank(), 
+                   vpcf_dtor_null, vpcf_dtor_null); 
+}
+
+vpc_parser* vpc_tok(vpc_parser* a){ 
+    return vpc_and(2, vpcf_fst, a, vpc_blank(), vpcf_dtor_null); 
+}
+
+vpc_parser* vpc_sym(const char* s){ return vpc_tok(vpc_string(s)); }
+
+vpc_parser* vpc_total(vpc_parser* a, vpc_dtor da){ 
+    return vpc_whole(vpc_strip(a), da); 
+}
+
+vpc_parser* vpc_between(vpc_parser* a, vpc_dtor ad, const char* o, 
+                        const char* c){
+  return vpc_and(3, vpcf_snd_free, vpc_string(o), a, vpc_string(c), free, ad);
+}
+
+vpc_parser* vpc_parens(vpc_parser* a, vpc_dtor ad){ 
+    return vpc_between(a, ad, "(", ")"); 
+}
+
+vpc_parser* vpc_braces(vpc_parser* a, vpc_dtor ad){ 
+    return vpc_between(a, ad, "<", ">"); 
+}
+
+vpc_parser* vpc_brackets(vpc_parser* a, vpc_dtor ad){ 
+    return vpc_between(a, ad, "{", "}"); 
+}
+
+vpc_parser* vpc_squares(vpc_parser* a, vpc_dtor ad){ 
+    return vpc_between(a, ad, "[", "]");
+}
+
+vpc_parser* vpc_tok_between(vpc_parser* a, vpc_dtor ad, const char* o, 
+                            const char* c){
+  return vpc_and(3, vpcf_snd_free, vpc_sym(o), vpc_tok(a), vpc_sym(c), free, ad);
+}
+
+vpc_parser* vpc_tok_parens(vpc_parser* a, vpc_dtor ad){ 
+    return vpc_tok_between(a, ad, "(", ")"); 
+}
+
+vpc_parser* vpc_tok_braces(vpc_parser* a, vpc_dtor ad){ 
+    return vpc_tok_between(a, ad, "<", ">"); 
+}
+
+vpc_parser* vpc_tok_brackets(vpc_parser* a, vpc_dtor ad){ 
+    return vpc_tok_between(a, ad, "{", "}"); 
+}
+
+vpc_parser* vpc_tok_squares(vpc_parser* a, vpc_dtor ad){ 
+    return vpc_tok_between(a, ad, "[", "]"); 
+}
+
+/*
  * Regular Expression Parser functions
  */
 
@@ -2189,75 +2479,6 @@ vpc_val* vpcf_float(vpc_val* x){
   return y;
 }
 
-static vpc_val* vpcf_escape_new(vpc_val* x, const char* input, const char* *output){
-  unsigned int i;
-  int found;
-  char *s = x;
-  char *y = calloc(1, 1);
-  char buff[2];
-
-  while(*s){
-    i = 0;
-    found = 0;
-
-    while(output[i]){
-      if(*s == input[i]){
-        y = realloc(y, strlen(y) + strlen(output[i]) + 1);
-        strcat(y, output[i]);
-        found = 1;
-        break;
-      }
-      i++;
-    }
-
-    if(!found){
-      y = realloc(y, strlen(y) + 2);
-      buff[0] = *s; 
-      buff[1] = '\0';
-      strcat(y, buff);
-    }
-    s++;
-  }
-  return y;
-}
-
-static vpc_val* vpcf_unescape_new(vpc_val* x, const char* input, const char** output){
-  unsigned int i;
-  int found = 0;
-  char *s = x;
-  char *y = calloc(1, 1);
-  char buff[2];
-
-  while(*s){
-    i = 0;
-    found = 0;
-
-    while(output[i]){
-      if((*(s+0)) == output[i][0] &&
-         (*(s+1)) == output[i][1]){
-        y = realloc(y, strlen(y) + 2);
-        buff[0] = input[i]; buff[1] = '\0';
-        strcat(y, buff);
-        found = 1;
-        s++;
-        break;
-      }
-      i++;
-    }
-
-    if(!found){
-      y = realloc(y, strlen(y) + 2);
-      buff[0] = *s; 
-      buff[1] = '\0';
-      strcat(y, buff);
-    }
-
-    if (*s == '\0') break;
-    else s++;
-  }
-  return y;
-}
-
 vpc_val* vpcf_escape(vpc_val* x){
   vpc_val* y = vpcf_escape_new(x, vpc_escape_input_c, vpc_escape_output_c);
   free(x);
@@ -2306,10 +2527,344 @@ vpc_val* vpcf_unescape_char_raw(vpc_val* x){
   return y;
 }
 
-vpc_val* vpcf_null(unsigned int n, vpc_val** xs) { (void) n; (void) xs; return NULL; }
+vpc_val* vpcf_null(unsigned int n, vpc_val** xs) { 
+    (void) n; 
+    (void) xs; 
+    return NULL; 
+}
+
 vpc_val* vpcf_fst(unsigned int n, vpc_val** xs) { (void) n; return xs[0]; }
 vpc_val* vpcf_snd(unsigned int n, vpc_val** xs) { (void) n; return xs[1]; }
 vpc_val* vpcf_trd(unsigned int n, vpc_val** xs) { (void) n; return xs[2]; }
+
+vpc_val* vpcf_fst_free(unsigned int n, vpc_val** xs){ 
+    return vpcf_nth_free(n, xs, 0); 
+}
+
+vpc_val* vpcf_snd_free(unsigned int n, vpc_val** xs){ 
+    return vpcf_nth_free(n, xs, 1); 
+}
+
+vpc_val* vpcf_trd_free(unsigned int n, vpc_val** xs){ 
+    return vpcf_nth_free(n, xs, 2); 
+}
+
+vpc_val* vpcf_strfold(unsigned int n, vpc_val** xs){
+  char* x = calloc(1, 1);
+  unsigned int i;
+
+  for(i = 0; i < n; i++){
+    x = realloc(x, strlen(x) + strlen(xs[i]) + 1);
+    strcat(x, xs[i]);
+    free(xs[i]);
+  }
+  return x;
+}
+
+vpc_val* vpcf_maths(unsigned int n, vpc_val** xs){
+  int** vs = (int**)xs;
+  (void) n;
+
+  if(strcmp(xs[1], "*") == 0) *vs[0] *= *vs[2];
+  if(strcmp(xs[1], "/") == 0) *vs[0] /= *vs[2];
+  if(strcmp(xs[1], "%") == 0) *vs[0] %= *vs[2];
+  if(strcmp(xs[1], "+") == 0) *vs[0] += *vs[2];
+  if(strcmp(xs[1], "-") == 0) *vs[0] -= *vs[2];
+
+  free(xs[1]); 
+  free(xs[2]);
+
+  return xs[0];
+}
+
+/*
+ *  Print functions
+ */
+
+void vpc_print(vpc_parser* p){
+  vpc_print_unretained(p, 1);
+  puts("");
+}
+
+/*
+ * Test functions
+ */
+
+/*
+ * These functions are slightly unwieldy and
+ * also the whole of the testing suite for vpc
+ * is pretty shaky.
+ *
+ * It could do with a lot more tests and more
+ * precision. Currently I am only really testing
+ * changes off of the examples.
+ */
+
+int vpc_test_fail(vpc_parser* p, const char* s, const void* d,
+                  int(*tester)(const void*, const void*),
+                  vpc_dtor destructor,
+                  void(*printer)(const void*)){
+  vpc_result r;
+  (void) printer;
+  if(vpc_parse("<test>", s, p, &r)){
+    if(tester(r.output, d)){
+      destructor(r.output);
+      return 0;
+    } else {
+      destructor(r.output);
+      return 1;
+    }
+  } else {
+    vpc_err_delete(r.error);
+    return 1;
+  }
+}
+
+int vpc_test_pass(vpc_parser* p, const char* s, const void* d,
+                  int(*tester)(const void*, const void*), 
+                  vpc_dtor destructor, 
+                  void(*printer)(const void*)){
+  vpc_result r;  
+  if(vpc_parse("<test>", s, p, &r)){
+    if(tester(r.output, d)){
+      destructor(r.output);
+      return 1;
+    } else {
+      printf("Got "); 
+      printer(r.output); 
+      puts("");
+      printf("Expected "); 
+      printer(d); 
+      puts("");
+      destructor(r.output);
+      return 0;
+    }
+  } else {    
+    vpc_err_print(r.error);
+    vpc_err_delete(r.error);
+    return 0;
+  }
+}
+
+/*
+ * AST functions
+ */
+
+void vpc_ast_delete(vpc_ast* a){
+  unsigned int i;
+
+  if(!a) return;
+  for(i = 0; i < a->children_num; i++) vpc_ast_delete(a->children[i]);
+
+  free(a->children);
+  free(a->tag);
+  free(a->contents);
+  free(a);
+
+}
+
+vpc_ast* vpc_ast_new(const char* tag, const char* contents){
+  vpc_ast* a = malloc(sizeof(vpc_ast));
+
+  a->tag = malloc(strlen(tag) + 1);
+  strcpy(a->tag, tag);
+
+  a->contents = malloc(strlen(contents) + 1);
+  strcpy(a->contents, contents);
+
+  a->state = vpc_state_new();
+
+  a->children_num = 0;
+  a->children = NULL;
+  return a;
+}
+
+vpc_ast* vpc_ast_build(unsigned int n, const char* tag, ...){
+  vpc_ast* a = vpc_ast_new(tag, "");
+  unsigned int i;
+  va_list va;
+
+  va_start(va, tag);
+  for(i = 0; i < n; i++) vpc_ast_add_child(a, va_arg(va, vpc_ast*));
+
+  va_end(va);
+
+  return a;
+}
+
+vpc_ast* vpc_ast_add_root(vpc_ast* a){
+  vpc_ast* r;
+
+  if(!a) return a;
+  if(!(a->children_num)) return a;
+  if(a->children_num == 1) return a;
+
+  r = vpc_ast_new(">", "");
+  vpc_ast_add_child(r, a);
+  return r;
+}
+
+int vpc_ast_eq(vpc_ast* a, vpc_ast* b){
+  unsigned int i;
+
+  if(strcmp(a->tag, b->tag)) return 0;
+  if(strcmp(a->contents, b->contents)) return 0;
+  if(a->children_num != b->children_num) return 0;
+
+  for(i = 0; i < a->children_num; i++){
+    if(!vpc_ast_eq(a->children[i], b->children[i])) return 0;
+  }
+  return 1;
+}
+
+vpc_ast* vpc_ast_add_child(vpc_ast* r, vpc_ast* a){
+  r->children_num++;
+  r->children = realloc(r->children, sizeof(vpc_ast*) * r->children_num);
+  r->children[r->children_num-1] = a;
+  return r;
+}
+
+vpc_ast* vpc_ast_add_tag(vpc_ast* a, const char* t){
+  if(!a) return a;
+  a->tag = realloc(a->tag, strlen(t) + 1 + strlen(a->tag) + 1);
+  memmove(a->tag + strlen(t) + 1, a->tag, strlen(a->tag)+1);
+  memmove(a->tag, t, strlen(t));
+  memmove(a->tag + strlen(t), "|", 1);
+  return a;
+}
+
+vpc_ast* vpc_ast_tag(vpc_ast* a, const char* t){
+  a->tag = realloc(a->tag, strlen(t) + 1);
+  strcpy(a->tag, t);
+  return a;
+}
+
+vpc_ast* vpc_ast_state(vpc_ast* a, vpc_cur_state s){
+  if(a == NULL) return a;
+  a->state = s;
+  return a;
+}
+
+void vpc_ast_print(vpc_ast* a){
+  vpc_ast_print_depth(a, 0, stdout);
+}
+
+void vpc_ast_print_to(vpc_ast* a, FILE* fp){
+  vpc_ast_print_depth(a, 0, fp);
+}
+
+vpc_val* vpcf_fold_ast(unsigned int n, vpc_val** xs){
+  unsigned int i, j;
+  vpc_ast** as = (vpc_ast**)xs;
+  vpc_ast* r;
+
+  if(!n) return NULL;
+  if(n == 1) return xs[0];
+  if(n == 2 && !xs[1]) return xs[0];
+  if(n == 2 && !xs[0]) return xs[1];
+
+  r = vpc_ast_new(">", "");
+
+  for(i = 0; i < n; i++){
+    if(!as[i]) continue;
+
+    if(as[i] && as[i]->children_num > 0){
+      for(j = 0; j < as[i]->children_num; j++)
+        vpc_ast_add_child(r, as[i]->children[j]);
+
+      vpc_ast_delete_no_children(as[i]);
+    } else if(as[i] && !(as[i]->children_num)){
+      vpc_ast_add_child(r, as[i]);
+    }
+  }
+
+  if(r->children_num) r->state = r->children[0]->state;
+
+  return r;
+}
+
+vpc_val* vpcf_str_ast(vpc_val* c){
+  vpc_ast* a = vpc_ast_new("", c);
+  free(c);
+  return a;
+}
+
+vpc_val* vpcf_state_ast(unsigned int n, vpc_val** xs){
+  vpc_cur_state* s = ((vpc_cur_state**)xs)[0];
+  vpc_ast* a = ((vpc_ast**)xs)[1];
+  a = vpc_ast_state(a, *s);
+  free(s);
+  (void) n;
+  return a;
+}
+
+vpc_parser* vpca_state(vpc_parser* a){
+  return vpc_and(2, vpcf_state_ast, vpc_state(), a, free);
+}
+
+vpc_parser* vpca_tag(vpc_parser* a, const char* t){
+  return vpc_parse_apply_to(a, (vpc_apply_to)vpc_ast_tag, (void*)t);
+}
+
+vpc_parser* vpca_add_tag(vpc_parser* a, const char* t){
+  return vpc_parse_apply_to(a, (vpc_apply_to)vpc_ast_add_tag, (void*)t);
+}
+
+vpc_parser* vpca_root(vpc_parser* a){
+  return vpc_parse_apply(a, (vpc_apply)vpc_ast_add_root);
+}
+
+vpc_parser* vpca_not(vpc_parser* a){ 
+    return vpc_not(a, (vpc_dtor)vpc_ast_delete); 
+}
+
+vpc_parser* vpca_maybe(vpc_parser* a){ return vpc_maybe(a); }
+vpc_parser* vpca_many(vpc_parser* a){ return vpc_many(vpcf_fold_ast, a); } 
+vpc_parser* vpca_many1(vpc_parser* a){ return vpc_many1(vpcf_fold_ast, a); }
+vpc_parser* vpca_count(unsigned int n, vpc_parser* a){ 
+    return vpc_count(n, vpcf_fold_ast, a, (vpc_dtor)vpc_ast_delete); 
+}
+
+vpc_parser* vpca_or(unsigned int n, ...){
+  unsigned int i;
+  va_list va;
+
+  vpc_parser* p = vpc_undefined();
+
+  p->type = VPC_TYPE_OR;
+  p->data.or_op.n = n;
+  p->data.or_op.xs = malloc(sizeof(vpc_parser*) * n);
+
+  va_start(va, n);  
+  for(i = 0; i < n; i++) p->data.or_op.xs[i] = va_arg(va, vpc_parser*);
+  va_end(va);
+
+  return p;
+}
+
+vpc_parser* vpca_and(unsigned int n, ...){
+  unsigned int i;
+  va_list va;
+
+  vpc_parser* p = vpc_undefined();
+
+  p->type = VPC_TYPE_AND;
+  p->data.and_op.n = n;
+  p->data.and_op.f = vpcf_fold_ast;
+  p->data.and_op.xs = malloc(sizeof(vpc_parser*) * n);
+  p->data.and_op.dxs = malloc(sizeof(vpc_dtor) * (n-1));
+
+  va_start(va, n);
+  for(i = 0; i < n; i++) p->data.and_op.xs[i] = va_arg(va, vpc_parser*);
+  for(i = 0; i < (n-1); i++) p->data.and_op.dxs[i] = (vpc_dtor)vpc_ast_delete;
+  va_end(va);
+
+  return p;  
+}
+
+vpc_parser* vpca_total(vpc_parser* a){ 
+    return vpc_total(a, (vpc_dtor)vpc_ast_delete); 
+}
 
 
 

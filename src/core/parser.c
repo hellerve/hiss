@@ -191,6 +191,25 @@ typedef struct{
 #define VPC_PRIMITIVE(x, f){ if(f) VPC_SUCCESS(x) else VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Incorrect Input"))}
 
 /*
+ *  Fold properties
+ */
+
+static const char vpc_escape_input_c[]  = {'\a', '\b', '\f', '\n', '\r',
+                                           '\t', '\v', '\\', '\'', '\"', '\0'};
+
+static const char *vpc_escape_output_c[] = {"\\a", "\\b", "\\f", "\\n", "\\r", "\\t", 
+                                            "\\v", "\\\\", "\\'", "\\\"", "\\0", NULL};
+
+static const char vpc_escape_input_raw_re[] = { '/' };
+static const char *vpc_escape_output_raw_re[] = { "\\/", NULL };
+
+static const char vpc_escape_input_raw_cstr[] = { '"' };
+static const char *vpc_escape_output_raw_cstr[] = { "\\\"", NULL };
+
+static const char vpc_escape_input_raw_cchar[] = { '\'' };
+static const char *vpc_escape_output_raw_cchar[] = { "\\'", NULL };
+
+/*
  *  Static functions
  */
 
@@ -1213,6 +1232,18 @@ static vpc_val* vpcf_re_range(vpc_val* x){
 }
 
 /*
+ * Common fold functions
+ */
+
+static vpc_val* vpcf_nth_free(unsigned int n, vpc_val** xs, unsigned int x){
+  unsigned int i;
+  for(i = 0; i < n; i++){
+    if(i != x) free(xs[i]);
+  }
+  return xs[x];
+}
+
+/*
  *  Exported functions
  */
 
@@ -2063,28 +2094,28 @@ vpc_parser* vpc_ident(){
  *             | "(" <regex> ")"
  *             | "[" <range> "]"
  */
-vpc_parser* vpc_re(const char *re){
-  char *err_msg;
+vpc_parser* vpc_re(const char* re){
+  char* err_msg;
   vpc_parser* err_out;
   vpc_result r;
-  vpc_parser *Regex, *Term, *Factor, *Base, *Range, *RegexEnclose; 
+  vpc_parser *regex, *term, *factor, *base, *range, *regex_enclose; 
 
-  Regex  = vpc_new("regex");
-  Term   = vpc_new("term");
-  Factor = vpc_new("factor");
-  Base   = vpc_new("base");
-  Range  = vpc_new("range");
+  regex  = vpc_new("regex");
+  term   = vpc_new("term");
+  factor = vpc_new("factor");
+  base   = vpc_new("base");
+  range  = vpc_new("range");
 
-  vpc_define(Regex, vpc_and(2, vpcf_re_or,
-    Term, 
-    vpc_maybe(vpc_and(2, vpcf_snd_free, vpc_char('|'), Regex, free)),
+  vpc_define(regex, vpc_and(2, vpcf_re_or,
+    term, 
+    vpc_maybe(vpc_and(2, vpcf_snd_free, vpc_char('|'), regex, free)),
     (vpc_dtor)vpc_delete
   ));
 
-  vpc_define(Term, vpc_many(vpcf_re_and, Factor));
+  vpc_define(term, vpc_many(vpcf_re_and, factor));
 
-  vpc_define(Factor, vpc_and(2, vpcf_re_repeat,
-    Base,
+  vpc_define(factor, vpc_and(2, vpcf_re_repeat,
+    base,
     vpc_or(5,
       vpc_char('*'), vpc_char('+'), vpc_char('?'),
       vpc_brackets(vpc_int(), free),
@@ -2092,21 +2123,21 @@ vpc_parser* vpc_re(const char *re){
     (vpc_dtor)vpc_delete
   ));
 
-  vpc_define(Base, vpc_or(4,
-    vpc_parens(Regex, (vpc_dtor)vpc_delete),
-    vpc_squares(Range, (vpc_dtor)vpc_delete),
+  vpc_define(base, vpc_or(4,
+    vpc_parens(regex, (vpc_dtor)vpc_delete),
+    vpc_squares(range, (vpc_dtor)vpc_delete),
     vpc_parse_apply(vpc_escape(), vpcf_re_escape),
     vpc_parse_apply(vpc_noneof(")|"), vpcf_re_escape)
   ));
 
-  vpc_define(Range, vpc_parse_apply(
+  vpc_define(range, vpc_parse_apply(
     vpc_many(vpcf_strfold, vpc_or(2, vpc_escape(), vpc_noneof("]"))),
     vpcf_re_range
   ));
 
-  RegexEnclose = vpc_whole(vpc_predictive(Regex), (vpc_dtor)vpc_delete);
+  regex_enclose = vpc_whole(vpc_predictive(regex), (vpc_dtor)vpc_delete);
 
-  if(!vpc_parse("<vpc_re_compiler>", re, RegexEnclose, &r)) {
+  if(!vpc_parse("<vpc_re_compiler>", re, regex_enclose, &r)) {
     err_msg = vpc_err_string(r.error);
     err_out = vpc_failf("Invalid Regex: %s", err_msg);
     vpc_err_delete(r.error);  
@@ -2114,11 +2145,173 @@ vpc_parser* vpc_re(const char *re){
     r.output = err_out;
   }
 
-  vpc_delete(RegexEnclose);
-  vpc_cleanup(5, Regex, Term, Factor, Base, Range);
+  vpc_delete(regex_enclose);
+  vpc_cleanup(5, regex, term, factor, base, range);
 
   return r.output;
 }
+
+/*
+ * Common fold functions
+ */
+
+void vpcf_dtor_null(vpc_val* x){ (void) x; return; }
+
+vpc_val* vpcf_ctor_null(){ return NULL; }
+vpc_val* vpcf_ctor_str(){ return calloc(1, 1); }
+vpc_val* vpcf_free(vpc_val* x){ free(x); return NULL; }
+
+vpc_val* vpcf_int(vpc_val* x){
+  long int* y = malloc(sizeof(long int));
+  *y = strtol(x, NULL, 10);
+  free(x);
+  return y;
+}
+
+vpc_val* vpcf_hex(vpc_val* x){
+  long int* y = malloc(sizeof(long int));
+  *y = strtol(x, NULL, 16);
+  free(x);
+  return y;
+}
+
+vpc_val* vpcf_oct(vpc_val* x){
+  long int* y = malloc(sizeof(long int));
+  *y = strtol(x, NULL, 8);
+  free(x);
+  return y;
+}
+
+vpc_val* vpcf_float(vpc_val* x){
+  double* y = malloc(sizeof(double));
+  *y = strtod(x, NULL);
+  free(x);
+  return y;
+}
+
+static vpc_val* vpcf_escape_new(vpc_val* x, const char* input, const char* *output){
+  unsigned int i;
+  int found;
+  char *s = x;
+  char *y = calloc(1, 1);
+  char buff[2];
+
+  while(*s){
+    i = 0;
+    found = 0;
+
+    while(output[i]){
+      if(*s == input[i]){
+        y = realloc(y, strlen(y) + strlen(output[i]) + 1);
+        strcat(y, output[i]);
+        found = 1;
+        break;
+      }
+      i++;
+    }
+
+    if(!found){
+      y = realloc(y, strlen(y) + 2);
+      buff[0] = *s; 
+      buff[1] = '\0';
+      strcat(y, buff);
+    }
+    s++;
+  }
+  return y;
+}
+
+static vpc_val* vpcf_unescape_new(vpc_val* x, const char* input, const char** output){
+  unsigned int i;
+  int found = 0;
+  char *s = x;
+  char *y = calloc(1, 1);
+  char buff[2];
+
+  while(*s){
+    i = 0;
+    found = 0;
+
+    while(output[i]){
+      if((*(s+0)) == output[i][0] &&
+         (*(s+1)) == output[i][1]){
+        y = realloc(y, strlen(y) + 2);
+        buff[0] = input[i]; buff[1] = '\0';
+        strcat(y, buff);
+        found = 1;
+        s++;
+        break;
+      }
+      i++;
+    }
+
+    if(!found){
+      y = realloc(y, strlen(y) + 2);
+      buff[0] = *s; 
+      buff[1] = '\0';
+      strcat(y, buff);
+    }
+
+    if (*s == '\0') break;
+    else s++;
+  }
+  return y;
+}
+
+vpc_val* vpcf_escape(vpc_val* x){
+  vpc_val* y = vpcf_escape_new(x, vpc_escape_input_c, vpc_escape_output_c);
+  free(x);
+  return y;
+}
+
+vpc_val* vpcf_unescape(vpc_val* x){
+  vpc_val* y = vpcf_unescape_new(x, vpc_escape_input_c, vpc_escape_output_c); 
+  free(x);
+  return y;
+}
+
+vpc_val* vpcf_escape_regex(vpc_val* x){
+  vpc_val* y = vpcf_escape_new(x, vpc_escape_input_raw_re, vpc_escape_output_raw_re);
+  free(x);
+  return y;  
+}
+
+vpc_val* vpcf_unescape_regex(vpc_val* x){
+  vpc_val* y = vpcf_unescape_new(x, vpc_escape_input_raw_re, vpc_escape_output_raw_re);
+  free(x);
+  return y;  
+}
+
+vpc_val* vpcf_escape_string_raw(vpc_val* x){
+  vpc_val* y = vpcf_escape_new(x, vpc_escape_input_raw_cstr, vpc_escape_output_raw_cstr);
+  free(x);
+  return y;
+}
+
+vpc_val*vpcf_unescape_string_raw(vpc_val* x){
+  vpc_val* y = vpcf_unescape_new(x, vpc_escape_input_raw_cstr, vpc_escape_output_raw_cstr);
+  free(x);
+  return y;
+}
+
+vpc_val* vpcf_escape_char_raw(vpc_val* x){
+  vpc_val* y = vpcf_escape_new(x, vpc_escape_input_raw_cchar, vpc_escape_output_raw_cchar);
+  free(x);
+  return y;
+}
+
+vpc_val* vpcf_unescape_char_raw(vpc_val* x){
+  vpc_val* y = vpcf_unescape_new(x, vpc_escape_input_raw_cchar, vpc_escape_output_raw_cchar);
+  free(x);
+  return y;
+}
+
+vpc_val* vpcf_null(unsigned int n, vpc_val** xs) { (void) n; (void) xs; return NULL; }
+vpc_val* vpcf_fst(unsigned int n, vpc_val** xs) { (void) n; return xs[0]; }
+vpc_val* vpcf_snd(unsigned int n, vpc_val** xs) { (void) n; return xs[1]; }
+vpc_val* vpcf_trd(unsigned int n, vpc_val** xs) { (void) n; return xs[2]; }
+
+
 
 #undef VPC_CONTINUE
 #undef VPC_SUCCESS

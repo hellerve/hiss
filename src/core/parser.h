@@ -226,8 +226,8 @@ vpc_val *vpcf_unescape_regex(vpc_val *x);
 vpc_val *vpcf_unescape_string_raw(vpc_val *x);
 vpc_val *vpcf_unescape_char_raw(vpc_val *x);
 
-vpc_val *vpcf_null(int n, vpc_val** xs);
-vpc_val *vpcf_fst(int n, vpc_val** xs);
+vpc_val *vpcf_null(unsigned int n, vpc_val** xs);
+vpc_val *vpcf_fst(unsigned int n, vpc_val** xs);
 vpc_val *vpcf_snd(unsigned int n, vpc_val** xs);
 vpc_val *vpcfrd(int n, vpc_val** xs);
 

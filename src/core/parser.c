@@ -792,7 +792,7 @@ static void vpc_stack_set_state(vpc_stack* s, unsigned int x){
 }
 
 static int vpc_stack_parsers_reserve_more(vpc_stack* s){
-  vpc_parser** check_realloc = NULL;
+  /*vpc_parser** check_realloc = NULL;
   unsigned int* check_realloc2 = NULL;
   if(s->parsers_count > s->parsers_slots){
     s->parsers_slots = (unsigned int) ceil((s->parsers_slots+1) * 1.5);
@@ -802,12 +802,17 @@ static int vpc_stack_parsers_reserve_more(vpc_stack* s){
     check_realloc2 = (unsigned int*) realloc(s->states, sizeof(int) * s->parsers_slots);
     if(!check_realloc2) return VPC_FALSE;
     s->states = check_realloc2;
+  }*/
+  if(s->parsers_count > s->parsers_slots){
+    s->parsers_slots = (unsigned int) ceil((s->parsers_slots+1) * 1.5);
+    s->parsers = realloc(s->parsers, sizeof(vpc_parser*) * s->parsers_slots);
+    s->states = realloc(s->states, sizeof(int) * s->parsers_slots);
   }
   return VPC_TRUE;
 }
 
 static int vpc_stack_parsers_reserve_less(vpc_stack* s){
-  vpc_parser** check_realloc = NULL;
+  /*vpc_parser** check_realloc = NULL;
   unsigned int* check_realloc2 = NULL;
   if(s->parsers_slots > pow(s->parsers_count+1, 1.5)){
     s->parsers_slots = (unsigned int) floor((s->parsers_slots-1) * (1.0/1.5));
@@ -817,6 +822,11 @@ static int vpc_stack_parsers_reserve_less(vpc_stack* s){
     check_realloc2 = (unsigned int*) realloc(s->states, sizeof(int) * s->parsers_slots);
     if(!check_realloc2) return VPC_FALSE;
     s->states = check_realloc2;
+  }*/
+  if(s->parsers_slots > pow(s->parsers_count+1, 1.5)){
+    s->parsers_slots = (unsigned int) floor((s->parsers_slots-1) * (1.0/1.5));
+    s->parsers = realloc(s->parsers, sizeof(vpc_parser*) * s->parsers_slots);
+    s->states = (unsigned int*) realloc(s->states, sizeof(int) * s->parsers_slots);
   }
   return VPC_TRUE;
 }
@@ -1673,6 +1683,8 @@ static void vpca_stmt_list_delete(vpc_val* x){
 }
 
 static vpc_val* vpca_stmt_list_apply_to(vpc_val* x, void* s){
+  if(!x || !s) return NULL;
+    
   vpca_grammar_st* st = s;
   vpca_stmt* stmt;
   vpca_stmt** stmts = x;
@@ -1690,6 +1702,7 @@ static vpc_val* vpca_stmt_list_apply_to(vpc_val* x, void* s){
     free(stmt);
     stmts++;
   }
+
   free(x);
 
   return NULL;
@@ -1763,14 +1776,17 @@ static vpc_err* vpca_lang_st(vpc_input* i, vpca_grammar_st* st){
  *  Error functions
  */
 
-void vpc_err_delete(vpc_err *x) {
+void vpc_err_delete(vpc_err* x){
   unsigned int i;
+
+  if(!x) return; 
+
   for (i = 0; i < x->expected_count; i++)
-    free(x->expected[i]);
+    if(x->expected[i]) free(x->expected[i]);
   
-  free(x->expected);
-  free(x->filename);
-  free(x->failure);
+  if(x->expected) free(x->expected);
+  if(x->filename) free(x->filename);
+  if(x->failure) free(x->failure);
   free(x);
 }
 
@@ -1825,30 +1841,30 @@ char* vpc_err_string(vpc_err* e){
 
 
 int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final){
-  unsigned int st = 0;
-  vpc_parser *p = NULL;
-  vpc_stack *stk = vpc_stack_new(i->filename);
-  char *s;
-  vpc_result r;
+unsigned int st = 0;
+vpc_parser *p = NULL;
+vpc_stack *stk = vpc_stack_new(i->filename);
+char *s;
+vpc_result r;
 
-  /* Begin the madness */
-  vpc_stack_pushp(stk, init);
+/* Begin the madness */
+vpc_stack_pushp(stk, init);
+
+while(!vpc_stack_empty(stk)){
+vpc_stack_peepp(stk, &p, &st);
+switch (p->type) {
+  /* Basic Parsers */
+  case VPC_TYPE_ANY:       VPC_PRIMITIVE(s, vpc_input_any(i, &s))
+  case VPC_TYPE_SINGLE:    VPC_PRIMITIVE(s, vpc_input_char(i, p->data.single.x, &s))
+  case VPC_TYPE_RANGE:     VPC_PRIMITIVE(s, vpc_input_range(i, p->data.range.x, p->data.range.y, &s))
+  case VPC_TYPE_ONEOF:     VPC_PRIMITIVE(s, vpc_input_oneof(i, p->data.string.x, &s))
+  case VPC_TYPE_NONEOF:    VPC_PRIMITIVE(s, vpc_input_noneof(i, p->data.string.x, &s))
+  case VPC_TYPE_SATISFY:   VPC_PRIMITIVE(s, vpc_input_satisfy(i, p->data.satisfy.f, &s))
+  case VPC_TYPE_STRING:    VPC_PRIMITIVE(s, vpc_input_string(i, p->data.string.x, &s))
   
-  while(!vpc_stack_empty(stk)){
-    vpc_stack_peepp(stk, &p, &st);
-    switch (p->type) {
-      /* Basic Parsers */
-      case VPC_TYPE_ANY:       VPC_PRIMITIVE(s, vpc_input_any(i, &s))
-      case VPC_TYPE_SINGLE:    VPC_PRIMITIVE(s, vpc_input_char(i, p->data.single.x, &s))
-      case VPC_TYPE_RANGE:     VPC_PRIMITIVE(s, vpc_input_range(i, p->data.range.x, p->data.range.y, &s))
-      case VPC_TYPE_ONEOF:     VPC_PRIMITIVE(s, vpc_input_oneof(i, p->data.string.x, &s))
-      case VPC_TYPE_NONEOF:    VPC_PRIMITIVE(s, vpc_input_noneof(i, p->data.string.x, &s))
-      case VPC_TYPE_SATISFY:   VPC_PRIMITIVE(s, vpc_input_satisfy(i, p->data.satisfy.f, &s))
-      case VPC_TYPE_STRING:    VPC_PRIMITIVE(s, vpc_input_string(i, p->data.string.x, &s))
-      
-      /* Other parsers */
-      case VPC_TYPE_UNDEFINED: VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Parser Undefined!"))
-      case VPC_TYPE_PASS:      VPC_SUCCESS(NULL);
+  /* Other parsers */
+  case VPC_TYPE_UNDEFINED: VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Parser Undefined!"))
+  case VPC_TYPE_PASS:      VPC_SUCCESS(NULL);
       case VPC_TYPE_FAIL:      VPC_FAILURE(vpc_err_fail(i->filename, i->state, p->data.fail.m))
       case VPC_TYPE_LIFT:      VPC_SUCCESS(p->data.lift.lf());
       case VPC_TYPE_LIFT_VAL:  VPC_SUCCESS(p->data.lift.x);

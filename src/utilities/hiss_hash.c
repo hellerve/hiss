@@ -2,7 +2,7 @@
 
 #define INIT_SIZE 1024
 #define GROWTH 2
-#define MAX_LOAD 1
+#define MAX_LOAD 0.99
 
 #define HASH_MUL 97
 
@@ -16,6 +16,7 @@ static hiss_hashtable* internal_hiss_table_new(unsigned int size){
 
     assert(hasht != 0);
 
+    hasht->n = 0;
     hasht->size = size;
     hasht->table = (hiss_entry**) malloc(sizeof(hiss_entry* ) * hasht->size);
 
@@ -44,6 +45,8 @@ void hiss_table_delete(hiss_hashtable* hasht){
     unsigned int i;
     hiss_entry* e = NULL;
     hiss_entry* next = NULL;
+
+    if(!hasht) return;
 
     for(i = 0; i < hasht->size; i++){
         for(e = hasht->table[i]; e != 0; e = next){
@@ -87,8 +90,7 @@ void hiss_table_insert(hiss_hashtable* hasht, const hiss_val* key, const hiss_va
     hiss_entry* e;
     unsigned long h;
 
-    assert(key);
-    assert(value);
+    if(!hasht || !hasht->size || !hasht->n || !key || !value) return;
 
     e = (hiss_entry*) malloc(sizeof(hiss_entry));
 

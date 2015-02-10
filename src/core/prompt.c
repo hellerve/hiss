@@ -23,7 +23,12 @@ void add_history(char* unused){}
 
 #include <editline/readline.h>
 
-#ifndef __APPLE__
+#ifdef __APPLE__
+#include <AvailabilityMacros.h>
+#if !(MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_8)
+#include <editline/history.h>
+#endif
+#else
 #include <editline/history.h>
 #endif
 #endif
@@ -93,8 +98,6 @@ int repl(const char* f){
     q_expression  = vpc_new("qexpr");
     expression   = vpc_new("expr");
     hiss  = vpc_new("hiss");
-
-    printf("Here!");
 
     vpca_lang(VPCA_LANG_DEFAULT,
         "number        : /-?[0-9]+/;                              \

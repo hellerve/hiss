@@ -45,6 +45,8 @@ void hiss_type_delete(hiss_type_table* hasht){
     hiss_type_entry* e = NULL;
     hiss_type_entry* next = NULL;
 
+    if(!hasht) return;
+
     for(i = 0; i < hasht->size; i++){
         for(e = hasht->table[i]; e != 0; e = next){
             next = e->next;

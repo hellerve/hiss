@@ -30,7 +30,7 @@ void add_history(char* unused){}
 
 #include "util.h"
 
-#define VERSION "Hiss version 0.0.1"
+#define VERSION "Hiss version 0.0.2"
 #define PROMPT "hiss> "
 #define USAGE "Usage: hiss [-hv]\n\tIf the program is called without arguments, "\
                "the REPL is started.\n\t-h triggers this help message.\n\t"\

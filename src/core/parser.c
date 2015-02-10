@@ -4,7 +4,6 @@
  *  Types and Definitions
  */
 
-
 /*
  *  Input type
  */
@@ -163,8 +162,8 @@ struct vpc_parser{
 };
 
 /*
-** Stack Type
-*/
+ * Stack Type
+ */
 
 typedef struct{
   unsigned int parsers_count;
@@ -182,6 +181,23 @@ typedef struct{
 } vpc_stack;
 
 /*
+ * Grammar Type
+ */
+
+typedef struct {
+  va_list* va;
+  unsigned int parsers_num;
+  vpc_parser** parsers;
+  int flags;
+} vpca_grammar_st;
+
+typedef struct {
+  char *ident;
+  char *name;
+  vpc_parser* grammar;
+} vpca_stmt;
+
+/*
  *  Type based macros
  */
 
@@ -189,6 +205,19 @@ typedef struct{
 #define VPC_SUCCESS(x){ vpc_stack_popp(stk, &p, &st); if(!vpc_stack_pushr(stk, vpc_result_out(x), 1)) break; continue; }
 #define VPC_FAILURE(x){ vpc_stack_popp(stk, &p, &st); if(!vpc_stack_pushr(stk, vpc_result_err(x), 0)) break; continue; }
 #define VPC_PRIMITIVE(x, f){ if(f) VPC_SUCCESS(x) else VPC_FAILURE(vpc_err_fail(i->filename, i->state, "Incorrect Input"))}
+
+/*
+ * Forward declarations
+ */
+
+vpc_parser* vpc_tok(vpc_parser* a); 
+vpc_parser* vpca_tag(vpc_parser* a, const char* t);
+vpc_parser* vpca_add_tag(vpc_parser* a, const char* t);
+vpc_parser* vpc_total(vpc_parser* a, vpc_dtor da);
+vpc_parser* vpc_tok_braces(vpc_parser* a, vpc_dtor ad);
+vpc_parser* vpc_tok_brackets(vpc_parser* a, vpc_dtor ad);
+vpc_parser* vpc_tok_parens(vpc_parser* a, vpc_dtor ad);
+int vpc_parse_input(vpc_input* i, vpc_parser* init, vpc_result* final);
 
 /*
  *  Fold properties
@@ -619,9 +648,9 @@ static int vpc_input_failure(vpc_input* v, char c) {
 }
 
 static int vpc_input_success(vpc_input* v, char c, char **o){
-  if (v->type == VPC_INPUT_PIPE &&
-      v->buffer &&
-      !vpc_input_buffer_in_range(v)){
+  if(v->type == VPC_INPUT_PIPE &&
+     v->buffer &&
+     !vpc_input_buffer_in_range(v)){
     v->buffer = (char*) realloc(v->buffer, strlen(v->buffer) + 2);
     v->buffer[strlen(v->buffer) + 1] = '\0';
     v->buffer[strlen(v->buffer) + 0] = c;
@@ -770,11 +799,9 @@ static int vpc_stack_parsers_reserve_more(vpc_stack* s){
     check_realloc = (vpc_parser**) realloc(s->parsers, sizeof(vpc_parser*) * s->parsers_slots);
     if(!check_realloc) return VPC_FALSE;
     s->parsers = check_realloc;
-    check_realloc = NULL;
     check_realloc2 = (unsigned int*) realloc(s->states, sizeof(int) * s->parsers_slots);
     if(!check_realloc2) return VPC_FALSE;
     s->states = check_realloc2;
-    check_realloc2 = 0;
   }
   return VPC_TRUE;
 }
@@ -787,11 +814,9 @@ static int vpc_stack_parsers_reserve_less(vpc_stack* s){
     check_realloc = (vpc_parser**) realloc(s->parsers, sizeof(vpc_parser*) * s->parsers_slots);
     if(!check_realloc) return VPC_FALSE;
     s->parsers = check_realloc;
-    check_realloc = NULL;
     check_realloc2 = (unsigned int*) realloc(s->states, sizeof(int) * s->parsers_slots);
     if(!check_realloc2) return VPC_FALSE;
     s->states = check_realloc2;
-    check_realloc2 = 0;
   }
   return VPC_TRUE;
 }
@@ -1451,6 +1476,284 @@ static void vpc_ast_print_depth(vpc_ast* a, unsigned int d, FILE* fp){
   for(i = 0; i < a->children_num; i++)
     vpc_ast_print_depth(a->children[i], d+1, fp);
 }
+
+/*
+ * Grammar Parser functions
+ */
+
+/*
+ * This is another interesting bootstrapping.
+ *
+ * Having a general purpose AST type allows
+ * users to specify the grammar alone and
+ * let all fold rules be automatically taken
+ * care of by existing functions.
+ *
+ * You don't get to control the type spat
+ * out but this means you can make a nice
+ * parser to take in some grammar in nice
+ * syntax and spit out a parser that works.
+ *
+ * The grammar for this looks surprisingly
+ * like regex but the main difference is that
+ * it is now whitespace insensitive and the
+ * base type takes literals of some form.
+ */
+
+/*
+ *
+ *  ### Grammar Grammar
+ *
+ *      <grammar> : (<term> "|" <grammar>) | <term>
+ *     
+ *      <term> : <factor>*
+ *
+ *      <factor> : <base>
+ *               | <base> "*"
+ *               | <base> "+"
+ *               | <base> "?"
+ *               | <base> "{" <digits> "}"
+ *           
+ *      <base> : "<" (<digits> | <ident>) ">"
+ *             | <string_lit>
+ *             | <char_lit>
+ *             | <regex_lit>
+ *             | "(" <grammar> ")"
+ */
+
+static vpc_val* vpcaf_grammar_or(unsigned int n, vpc_val** xs){
+  (void) n;
+  if(xs[1] == NULL) return xs[0];
+  else return vpca_or(2, xs[0], xs[1]);
+}
+
+static vpc_val* vpcaf_grammar_and(unsigned int n, vpc_val** xs){
+  unsigned int i;
+  vpc_parser* p = vpc_pass();  
+  
+  for (i = 0; i < n; i++) if (xs[i]) p = vpca_and(2, p, xs[i]);
+  
+  return p;
+}
+
+static vpc_val* vpcaf_grammar_repeat(unsigned int n, vpc_val** xs){ 
+  unsigned int num;
+  (void) n;
+
+  if(!xs[1]) return xs[0];
+  if(strcmp(xs[1], "*") == 0) { free(xs[1]); return vpca_many(xs[0]); }
+  if(strcmp(xs[1], "+") == 0) { free(xs[1]); return vpca_many1(xs[0]); }
+  if(strcmp(xs[1], "?") == 0) { free(xs[1]); return vpca_maybe(xs[0]); }
+  if(strcmp(xs[1], "!") == 0) { free(xs[1]); return vpca_not(xs[0]); }
+  num = *((unsigned int*)xs[1]);
+  free(xs[1]);
+  return vpca_count(num, xs[0]);
+}
+
+static vpc_val* vpcaf_grammar_string(vpc_val* x, void* s){
+  vpca_grammar_st* st = s;
+  char* y = vpcf_unescape(x);
+  vpc_parser* p = (st->flags & VPCA_LANG_WHITESPACE_SENSITIVE) ? 
+                  vpc_string(y) : vpc_tok(vpc_string(y));
+  
+  free(y);
+  return vpca_state(vpca_tag(vpc_parse_apply(p, vpcf_str_ast), "string"));
+}
+
+static vpc_val* vpcaf_grammar_char(vpc_val* x, void* s){
+  vpca_grammar_st* st = s;
+  char* y = vpcf_unescape(x);
+  vpc_parser* p = (st->flags & VPCA_LANG_WHITESPACE_SENSITIVE) ? 
+                  vpc_char(y[0]) : vpc_tok(vpc_char(y[0]));
+
+  free(y);
+  return vpca_state(vpca_tag(vpc_parse_apply(p, vpcf_str_ast), "char"));
+}
+
+static vpc_val* vpcaf_grammar_regex(vpc_val* x, void* s){
+  vpca_grammar_st* st = s;
+  char* y = vpcf_unescape_regex(x);
+  vpc_parser* p = (st->flags & VPCA_LANG_WHITESPACE_SENSITIVE) ? 
+                  vpc_re(y) : vpc_tok(vpc_re(y));
+  
+  free(y);
+  return vpca_state(vpca_tag(vpc_parse_apply(p, vpcf_str_ast), "regex"));
+}
+
+static int is_number(const char* s){
+  size_t i;
+  for (i = 0; i < strlen(s); i++) if(!strchr("0123456789", s[i])) return 0;
+  return 1;
+}
+
+static vpc_parser* vpca_grammar_find_parser(char* x, vpca_grammar_st* st){ 
+  long int i;
+  vpc_parser* p;
+
+  /* Case of Number */
+  if(is_number(x)){
+    i = strtol(x, NULL, 10);
+    while(st->parsers_num <= i){
+      st->parsers_num++;
+      st->parsers = realloc(st->parsers, sizeof(vpc_parser*) * st->parsers_num);
+      st->parsers[st->parsers_num-1] = va_arg(*st->va, vpc_parser*);
+      if(st->parsers[st->parsers_num-1] == NULL)
+        return vpc_failf("No Parser in position %i! Only supplied %i Parsers!", 
+                         i, st->parsers_num);
+    }
+
+    return st->parsers[st->parsers_num-1];
+  /* Case of Identifier */
+  } else {
+    /* Search Existing Parsers */
+    for(i = 0; i < st->parsers_num; i++){
+      vpc_parser* q = st->parsers[i];
+      if(!q) return vpc_failf("Unknown Parser '%s'!", x);
+      if(q->name && strcmp(q->name, x) == 0) return q;
+    }
+
+    /* Search New Parsers */
+    while (1) {
+      p = va_arg(*st->va, vpc_parser*);
+
+      st->parsers_num++;
+      st->parsers = realloc(st->parsers, sizeof(vpc_parser*) * st->parsers_num);
+      st->parsers[st->parsers_num-1] = p;
+
+      if(p == NULL) return vpc_failf("Unknown Parser '%s'!", x);
+      if(p->name && strcmp(p->name, x) == 0) return p;
+    }
+ }  
+}
+
+static vpc_val* vpcaf_grammar_id(vpc_val* x, void* s){
+  vpca_grammar_st* st = s;
+  vpc_parser* p = vpca_grammar_find_parser(x, st);
+  free(x);
+
+  if(p->name) return vpca_state(vpca_root(vpca_add_tag(p, p->name)));
+  else return vpca_state(vpca_root(p));
+}
+
+static vpc_val* vpca_stmt_afold(unsigned int n, vpc_val** xs){
+  vpca_stmt* stmt = malloc(sizeof(vpca_stmt));
+  stmt->ident = ((char**)xs)[0];
+  stmt->name = ((char**)xs)[1];
+  stmt->grammar = ((vpc_parser**)xs)[3];
+  (void) n;
+  free(((char**)xs)[2]);
+  free(((char**)xs)[4]);
+
+  return stmt;
+}
+
+static vpc_val* vpca_stmt_fold(unsigned int n, vpc_val** xs){
+  unsigned int i;
+  vpca_stmt** stmts = malloc(sizeof(vpca_stmt*) * (n+1));
+
+  for(i = 0; i < n; i++) stmts[i] = xs[i];
+
+  stmts[n] = NULL;  
+
+  return stmts;
+}
+
+static void vpca_stmt_list_delete(vpc_val* x){
+  vpca_stmt** stmts = x;
+
+  while(*stmts){
+    vpca_stmt* stmt = *stmts; 
+    free(stmt->ident);
+    free(stmt->name);
+    vpc_soft_delete(stmt->grammar);
+    free(stmt);  
+    stmts++;
+  }
+  free(x);
+}
+
+static vpc_val* vpca_stmt_list_apply_to(vpc_val* x, void* s){
+  vpca_grammar_st* st = s;
+  vpca_stmt* stmt;
+  vpca_stmt** stmts = x;
+  vpc_parser* left;
+
+  while(*stmts){
+    stmt = *stmts;
+    left = vpca_grammar_find_parser(stmt->ident, st);
+    if(st->flags & VPCA_LANG_PREDICTIVE) 
+        stmt->grammar = vpc_predictive(stmt->grammar);
+    if (stmt->name) stmt->grammar = vpc_expect(stmt->grammar, stmt->name);
+    vpc_define(left, stmt->grammar);
+    free(stmt->ident);
+    free(stmt->name);
+    free(stmt);
+    stmts++;
+  }
+  free(x);
+
+  return NULL;
+}
+
+
+static vpc_err* vpca_lang_st(vpc_input* i, vpca_grammar_st* st){
+  vpc_result r;
+  vpc_err* e;
+  vpc_parser *lang, *stmt, *grammar, *term, *factor, *base; 
+
+  lang    = vpc_new("lang");
+  stmt    = vpc_new("stmt");
+  grammar = vpc_new("grammar");
+  term    = vpc_new("term");
+  factor  = vpc_new("factor");
+  base    = vpc_new("base");
+
+  vpc_define(lang, vpc_parse_apply_to(
+    vpc_total(vpc_predictive(vpc_many(vpca_stmt_fold, stmt)), vpca_stmt_list_delete),
+    vpca_stmt_list_apply_to, st
+  ));
+
+  vpc_define(stmt, vpc_and(5, vpca_stmt_afold,
+    vpc_tok(vpc_ident()), vpc_maybe(vpc_tok(vpc_string_lit())), vpc_sym(":"), 
+    grammar, vpc_sym(";"), free, free, free, vpc_soft_delete
+  ));
+
+  vpc_define(grammar, vpc_and(2, vpcaf_grammar_or,
+      term, vpc_maybe(vpc_and(2, vpcf_snd_free, vpc_sym("|"), grammar, free)),
+      vpc_soft_delete
+  ));
+
+  vpc_define(term, vpc_many1(vpcaf_grammar_and, factor));
+
+  vpc_define(factor, vpc_and(2, vpcaf_grammar_repeat,
+    base,
+      vpc_or(6,
+        vpc_sym("*"),
+        vpc_sym("+"),
+        vpc_sym("?"),
+        vpc_sym("!"),
+        vpc_tok_brackets(vpc_int(), free),
+        vpc_pass()),
+    vpc_soft_delete
+  ));
+
+  vpc_define(base, vpc_or(5,
+    vpc_parse_apply_to(vpc_tok(vpc_string_lit()), vpcaf_grammar_string, st),
+    vpc_parse_apply_to(vpc_tok(vpc_char_lit()),   vpcaf_grammar_char, st),
+    vpc_parse_apply_to(vpc_tok(vpc_regex_lit()),  vpcaf_grammar_regex, st),
+    vpc_parse_apply_to(vpc_tok_braces(vpc_or(2, vpc_digits(), vpc_ident()), free), vpcaf_grammar_id, st),
+    vpc_tok_parens(grammar, vpc_soft_delete)
+  ));
+
+
+  if(!vpc_parse_input(i, lang, &r)) e = r.error;
+  else e = NULL;
+
+  vpc_cleanup(6, lang, stmt, grammar, term, factor, base);
+
+  return e;
+}
+
 
 /*
  *  Exported functions
@@ -2866,7 +3169,217 @@ vpc_parser* vpca_total(vpc_parser* a){
     return vpc_total(a, (vpc_dtor)vpc_ast_delete); 
 }
 
+/*
+ * Grammar Parser functions
+ */
 
+/*
+ * This is another interesting bootstrapping.
+ *
+ * Having a general purpose AST type allows
+ * users to specify the grammar alone and
+ * let all fold rules be automatically taken
+ * care of by existing functions.
+ *
+ * You don't get to control the type spat
+ * out but this means you can make a nice
+ * parser to take in some grammar in nice
+ * syntax and spit out a parser that works.
+ *
+ * The grammar for this looks surprisingly
+ * like regex but the main difference is that
+ * it is now whitespace insensitive and the
+ * base type takes literals of some form.
+ */
+
+/*
+ *
+ *  ### Grammar Grammar
+ *
+ *      <grammar> : (<term> "|" <grammar>) | <term>
+ *     
+ *      <term> : <factor>*
+ *
+ *      <factor> : <base>
+ *               | <base> "*"
+ *               | <base> "+"
+ *               | <base> "?"
+ *               | <base> "{" <digits> "}"
+ *           
+ *      <base> : "<" (<digits> | <ident>) ">"
+ *             | <string_lit>
+ *             | <char_lit>
+ *             | <regex_lit>
+ *             | "(" <grammar> ")"
+ */
+
+vpc_parser* vpca_parse_grammar_st(const char* input_grammar, vpca_grammar_st* st){
+  char* err_msg;
+  vpc_parser* err_out;
+  vpc_result r;
+  vpc_parser *grammar_total, *grammar, *term, *factor, *base;
+
+  grammar_total = vpc_new("grammar_total");
+  grammar = vpc_new("grammar");
+  term = vpc_new("term");
+  factor = vpc_new("factor");
+  base = vpc_new("base");
+
+  vpc_define(grammar_total, vpc_predictive(vpc_total(grammar, vpc_soft_delete)));
+
+  vpc_define(grammar, vpc_and(2, vpcaf_grammar_or,
+    term,
+    vpc_maybe(vpc_and(2, vpcf_snd_free, vpc_sym("|"), grammar, free)),
+    vpc_soft_delete
+  ));
+
+  vpc_define(term, vpc_many1(vpcaf_grammar_and, factor));
+
+  vpc_define(factor, vpc_and(2, vpcaf_grammar_repeat,
+    base,
+      vpc_or(6,
+        vpc_sym("*"),
+        vpc_sym("+"),
+        vpc_sym("?"),
+        vpc_sym("!"),
+        vpc_tok_brackets(vpc_int(), free),
+        vpc_pass()),
+    vpc_soft_delete
+  ));
+
+  vpc_define(base, vpc_or(5,
+    vpc_parse_apply_to(vpc_tok(vpc_string_lit()), vpcaf_grammar_string, st),
+    vpc_parse_apply_to(vpc_tok(vpc_char_lit()),   vpcaf_grammar_char, st),
+    vpc_parse_apply_to(vpc_tok(vpc_regex_lit()),  vpcaf_grammar_regex, st),
+    vpc_parse_apply_to(vpc_tok_braces(vpc_or(2, vpc_digits(), vpc_ident()), free), 
+                 vpcaf_grammar_id, st),
+    vpc_tok_parens(grammar, vpc_soft_delete)
+  ));
+
+  if(!vpc_parse("<vpc_grammar_compiler>", input_grammar, grammar_total, &r)){
+    err_msg = vpc_err_string(r.error);
+    err_out = vpc_failf("Invalid Grammar: %s", err_msg);
+    vpc_err_delete(r.error);
+    free(err_msg);
+    r.output = err_out;
+  }
+
+  vpc_cleanup(5, grammar_total, grammar, term, factor, base);
+
+  return (st->flags & VPCA_LANG_PREDICTIVE) ? vpc_predictive(r.output) : r.output;
+}
+
+vpc_parser* vpca_grammar(int flags, const char* grammar, ...){
+  vpca_grammar_st st;
+  vpc_parser* res;
+  va_list va;
+
+  va_start(va, grammar);
+
+  st.va = &va;
+  st.parsers_num = 0;
+  st.parsers = NULL;
+  st.flags = flags;
+
+  res = vpca_parse_grammar_st(grammar, &st);  
+  free(st.parsers);
+  va_end(va);
+  return res;
+}
+
+vpc_err* vpca_lang_file(int flags, FILE* f, ...){
+  vpca_grammar_st st;
+  vpc_input* i;
+  vpc_err* err;
+  va_list va;  
+
+  va_start(va, f);
+
+  st.va = &va;
+  st.parsers_num = 0;
+  st.parsers = NULL;
+  st.flags = flags;
+
+  i = vpc_input_new_file("<vpca_lang_file>", f);
+  err = vpca_lang_st(i, &st);
+  vpc_input_delete(i);
+
+  free(st.parsers);
+  va_end(va);
+  return err;
+}
+
+vpc_err* vpca_lang_pipe(int flags, FILE* p, ...){
+  vpca_grammar_st st;
+  vpc_input* i;
+  vpc_err* err;
+  va_list va;  
+
+  va_start(va, p);
+
+  st.va = &va;
+  st.parsers_num = 0;
+  st.parsers = NULL;
+  st.flags = flags;
+
+  i = vpc_input_new_pipe("<vpca_lang_pipe>", p);
+  err = vpca_lang_st(i, &st);
+  vpc_input_delete(i);
+
+  free(st.parsers);
+  va_end(va);
+  return err;
+}
+
+vpc_err* vpca_lang(int flags, const char* language, ...){
+  vpca_grammar_st st;
+  vpc_input* i;
+  vpc_err* err;
+  va_list va;  
+
+  va_start(va, language);
+
+  st.va = &va;
+  st.parsers_num = 0;
+  st.parsers = NULL;
+  st.flags = flags;
+
+  i = vpc_input_new_string("<vpca_lang>", language);
+  err = vpca_lang_st(i, &st);
+  vpc_input_delete(i);
+
+  free(st.parsers);
+  va_end(va);
+  return err;
+}
+
+vpc_err* vpca_lang_contents(int flags, const char* filename, ...){
+  vpca_grammar_st st;
+  vpc_input *i;
+  vpc_err *err;
+  va_list va;
+  FILE* f = fopen(filename, "rb");
+
+  if(!f) return vpc_err_fail(filename, vpc_state_new(), "Unable to open file!");
+
+  va_start(va, filename);
+
+  st.va = &va;
+  st.parsers_num = 0;
+  st.parsers = NULL;
+  st.flags = flags;
+
+  i = vpc_input_new_file(filename, f);
+  err = vpca_lang_st(i, &st);
+  vpc_input_delete(i);
+
+  free(st.parsers);
+  va_end(va);  
+
+  fclose(f);
+
+  return err;
+}
 
 #undef VPC_CONTINUE
 #undef VPC_SUCCESS

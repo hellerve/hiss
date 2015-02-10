@@ -114,7 +114,7 @@ void hiss_val_del(hiss_val* val){
                 hiss_val_del(val->body);
             }
             break;
-
+        default: break;
     }
     free(val);
 }

@@ -22,7 +22,7 @@ static void sweep(hiss_hashtable* t){
             unreached = *e;
 
             *e = unreached->next;
-            hiss_table_remove(t, unreached->key);
+            //hiss_table_remove(t, unreached->key);
         }else{
             (*e)->marked = 0;
             e = &(*e)->next;

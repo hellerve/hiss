@@ -152,6 +152,7 @@ void hiss_val_print(hiss_val* val){
                 putchar(')');
             }
             break;
+        default: break;
     }
 }
 
@@ -328,6 +329,7 @@ static hiss_val* hiss_val_eq(hiss_val* x, hiss_val* y){
       break;
     case HISS_BOOL:
       return hiss_val_bool(x->boolean == y->boolean);
+    default: break;
   }
   return hiss_val_bool(HISS_FALSE);
 }
@@ -455,7 +457,9 @@ hiss_val* hiss_val_copy(const hiss_val* val){
       c->cells = (hiss_val**) malloc(sizeof(hiss_val*) * c->count);
       for(i = 0; i < c->count; i++)
         c->cells[i] = hiss_val_copy(val->cells[i]);
-    break;
+       break;
+    default:
+       break;
   }
   
   return c;
@@ -680,6 +684,7 @@ static hiss_val* builtin_const(hiss_env* e, hiss_val* a){
   
      //And now?
   }
+  (void) formals;
   return NULL;
 }
 

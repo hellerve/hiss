@@ -4,6 +4,7 @@
 vpc_parser* number;
 vpc_parser* symbol;
 vpc_parser* string;
+vpc_parser* type;
 vpc_parser* comment;
 vpc_parser* s_expression;
 vpc_parser* q_expression;

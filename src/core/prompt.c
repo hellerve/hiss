@@ -86,25 +86,28 @@ int repl(const char* f){
     hiss_env* e = NULL;
     number = vpc_new("number");
     symbol = vpc_new("symbol");
+    type = vpc_new("type");
     string = vpc_new("string");
     comment = vpc_new("comment");
-    s_expression  = vpc_new("s_expression");
-    q_expression  = vpc_new("q_expression");
-    expression   = vpc_new("expression");
+    s_expression  = vpc_new("sexpr");
+    q_expression  = vpc_new("qexpr");
+    expression   = vpc_new("expr");
     hiss  = vpc_new("hiss");
+
+    printf("Here!");
 
     vpca_lang(VPCA_LANG_DEFAULT,
         "number        : /-?[0-9]+/;                              \
          symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/;        \
-         type          : /type\\:<symbol>/;                      \
+         type          : /type:<symbol>/;                         \
          string        : /\"(\\\\.|[^\"])*\"/;                    \
          comment       : /#[^\\r\\n]*/;                           \
-         s_expression  : '('<expr>*')';                           \
-         q_expression  : '{'<expr>*'}';                           \
-         expression    : <number>|<symbol>|<sexpr>|<qexpr>|<type>;\
+         sexpr         : '('<expr>*')';                           \
+         qexpr         : '{'<expr>*'}';                           \
+         expr          : <number> | <string> | <symbol> | <sexpr> | <qexpr> | <type> | <comment>;\
          hiss          : /^/<expr>*/$/;                           \
         ",
-    number, symbol, string, comment, s_expression, q_expression, 
+    number, symbol, type, string, comment, s_expression, q_expression, 
     expression, hiss);
     
     e = hiss_env_new();

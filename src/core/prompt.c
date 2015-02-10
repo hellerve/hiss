@@ -32,9 +32,9 @@ void add_history(char* unused){}
 
 #define VERSION "Hiss version 0.0.1"
 #define PROMPT "hiss> "
-#define USAGE "Usage: hiss [-hv]\n\tIf the program is called without arguments, \
-               the REPL is started.\n\t-h triggers this help message.\n\t\
-               -v triggers version information\n"
+#define USAGE "Usage: hiss [-hv]\n\tIf the program is called without arguments, "\
+               "the REPL is started.\n\t-h triggers this help message.\n\t"\
+               "-v triggers version information"
 
 static __inline int ends_with(const char* str, const char* suffix){
     size_t lenstr = strlen(str);
@@ -53,12 +53,12 @@ static __inline char* parse_arguments(int argc, char** argv){
 
     for(i = 1; i < argc; ){
         if(strcmp(argv[i], "-v") == 0){
-            printf(VERSION);
+            printf("%s\n", VERSION);
             exit(0);
         } if(ends_with(argv[i], ".his")){
             return argv[i];
         } else {
-            printf(USAGE);
+            puts(USAGE);
             exit(127);
         }
     }

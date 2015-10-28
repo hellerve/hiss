@@ -1,4 +1,4 @@
-(load ".stdlib")
+(load "lib/stdlib/")
 
 (fun {number? c}{
      (if (== (type? c) "Number"))

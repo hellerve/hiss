@@ -22,7 +22,7 @@ typedef struct{
 
 typedef struct hiss_entry{
     unsigned short marked;
-    const struct hiss_val* key;
+    const char* key;
     const struct hiss_val* value;
     struct hiss_entry* next;
 }hiss_entry;

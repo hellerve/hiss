@@ -1,6 +1,7 @@
 #include "hiss_hash.h"
+#include <limits.h>
 
-#define INIT_SIZE 1024
+#define INIT_SIZE 65536
 #define GROWTH 2
 #define MAX_LOAD 0.99
 
@@ -52,7 +53,7 @@ void hiss_table_delete(hiss_hashtable* hasht){
         for(e = hasht->table[i]; e != 0; e = next){
             next = e->next;
 
-            free((hiss_val*)e->key);
+            free((char*)e->key);
             free((hiss_val*)e->value);
             free(e);
         }
@@ -62,17 +63,23 @@ void hiss_table_delete(hiss_hashtable* hasht){
     free(hasht);
 }
 
-static unsigned long hiss_hash(const hiss_val* key){
-    unsigned const char* us;
-    unsigned long h = 0;
+static unsigned long hiss_hash(const char* key){
+  unsigned long hashval = 0;
+  unsigned int i = 0;
 
-    for(us = (unsigned const char*) key->sym; *us; us++)
-        h = (h * HASH_MUL) + *us;
+  assert(key != NULL);
 
-    return h;
+  while(hashval < ULONG_MAX && i < strlen(key)) {
+    hashval = hashval << 8;
+    hashval += (unsigned) key[i];
+    i++;
+  }
+
+  return hashval;
 }
 
 static void grow(hiss_hashtable* hasht){
+    // Has to compute new hashes
     hiss_hashtable* tmp;
     hiss_hashtable swap;
 
@@ -86,11 +93,17 @@ static void grow(hiss_hashtable* hasht){
     hiss_table_delete(tmp);
 }
 
-void hiss_table_insert(hiss_hashtable* hasht, const hiss_val* key, const hiss_val* value){
+const hiss_val* hiss_table_insert(hiss_hashtable* hasht, const char* key, const hiss_val* value){
     hiss_entry* e;
     unsigned long h;
 
-    if(!hasht || !hasht->size || !hasht->n || !key || !value) return;
+    if(!hasht || !hasht->size || !key || !value) return hiss_err("Invalid call to insert: %s", key);
+
+    h = hiss_hash(key) % hasht->size;
+    
+    for (e = hasht->table[h]; e; e = e->next) if (strcmp(key, e->key) == 0) break;
+
+    if (e != NULL) return hiss_err("Already defined: %s", key);
 
     e = (hiss_entry*) malloc(sizeof(hiss_entry));
 
@@ -98,8 +111,6 @@ void hiss_table_insert(hiss_hashtable* hasht, const hiss_val* key, const hiss_va
 
     e->key = key;
     e->value = value;
-
-    h = hiss_hash(key) % hasht->size;
 
     e->next = hasht->table[h];
     hasht->table[h] = e;
@@ -110,31 +121,20 @@ void hiss_table_insert(hiss_hashtable* hasht, const hiss_val* key, const hiss_va
         gc(hasht);
         grow(hasht);
     }
+
+    return hiss_val_bool(HISS_TRUE);
 }
 
-const hiss_val* hiss_table_get(hiss_hashtable* hasht, const hiss_val* key){
-    hiss_entry* e;
-
-    for(e = hasht->table[hiss_hash(key) % hasht->size]; e; e = e->next)
-        if(e->key == key) return e->value;
-
-    return NULL;
+const hiss_val* hiss_table_get(hiss_hashtable* hasht, const char* key){
+    unsigned long h = hiss_hash(key) % hasht->size;
+    
+    if (hasht->table[h] != NULL && hasht->table[h]->value != NULL) return hasht->table[h]->value;
+    return hiss_err("Not found: %s", key);
 }
 
-void hiss_table_remove(hiss_hashtable* hasht, const hiss_val* key){
-    hiss_entry** prev;
-    hiss_entry* e;
+const hiss_val* hiss_table_remove(hiss_hashtable* hasht, const char* key){
+    unsigned long h = hiss_hash(key);
 
-    for(prev = &(hasht->table[hiss_hash(key) % hasht->size]); *prev; prev = &((*prev)->next)){
-        if((*prev)->key == key){
-            e = *prev;
-            *prev = e->next;
-
-            hiss_val_del((hiss_val*)e->key);
-            hiss_val_del((hiss_val*)e->value);
-            free(e);
-
-            return;
-        }
-    }
+    if (hasht->table[h] != NULL) { free(hasht->table[h]); return hiss_val_bool(HISS_TRUE); }
+    return hiss_err("Not found: %s", key);
 }

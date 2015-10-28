@@ -1,4 +1,4 @@
-(load "fun")
+(load "/lib/stdlib/fun")
 (def {nil} {})
 (def {ok} ())
 

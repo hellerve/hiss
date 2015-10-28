@@ -115,7 +115,7 @@ const struct hiss_val* hiss_type_get(hiss_type_table* hasht, const char* key){
     for(e = hasht->table[hiss_hash(key) % hasht->size]; e; e = e->next)
         if(e->key == key) return e->value;
 
-    return NULL;
+    return hiss_err("Not found: %s", key);
 }
 
 void hiss_type_remove(hiss_type_table* hasht, const char* key){

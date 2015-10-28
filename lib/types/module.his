@@ -1,2 +1,2 @@
-(load "types")
-(load "pair")
+(load "lib/types/types")
+(load "lib/types/pair")

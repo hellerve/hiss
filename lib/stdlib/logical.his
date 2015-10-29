@@ -1,7 +1,3 @@
-(load "fun")
-(fun {or x y} {+ x y})
-
-(fun {and x y} {* x y})
-
-(fun {not x} {- 1 x})
-
+(def {and} &&)
+(def {or} ||)
+(def {not} !)

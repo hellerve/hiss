@@ -101,7 +101,7 @@ int repl(const char* f){
 
     mpca_lang(MPCA_LANG_DEFAULT,
         "number        : /-?[0-9]+/;                              \
-         symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!\\:?&]+/;    \
+         symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!\\|\\:?&]+/;    \
          type          : /type:<symbol>/;                         \
          string        : /\"(\\\\.|[^\"])*\"/;                    \
          comment       : /#[^\\r\\n]*/;                           \

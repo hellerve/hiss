@@ -127,14 +127,30 @@ const hiss_val* hiss_table_insert(hiss_hashtable* hasht, const char* key, const 
 
 const hiss_val* hiss_table_get(hiss_hashtable* hasht, const char* key){
     unsigned long h = hiss_hash(key) % hasht->size;
+    const hiss_entry* e;
     
-    if (hasht->table[h] != NULL && hasht->table[h]->value != NULL) return hasht->table[h]->value;
-    return hiss_err("Not found: %s", key);
+    if (hasht->table[h] != NULL) {
+      for (e = hasht->table[h]; e; e = e->next)
+        if (strcmp(key, e->key) == 0)
+          return e->value;
+    }
+    return NULL;
 }
 
 const hiss_val* hiss_table_remove(hiss_hashtable* hasht, const char* key){
     unsigned long h = hiss_hash(key);
+    hiss_entry* e, *prev = NULL;
 
-    if (hasht->table[h] != NULL) { free(hasht->table[h]); return hiss_val_bool(HISS_TRUE); }
+    if (hasht->table[h] != NULL) { 
+      for (e = hasht->table[h]; e; e = e->next) {
+        if (strcmp(key, e->key) == 0) {
+          if (prev != NULL) prev->next = e->next;
+          else hasht->table[h] = e->next;
+          free(e);
+          return hiss_val_bool(HISS_TRUE);
+        }
+        e = prev;
+      }
+    }
     return hiss_err("Not found: %s", key);
 }

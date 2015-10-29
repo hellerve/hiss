@@ -19,6 +19,10 @@
   HISS_ASSERT(args, args->cells[index]->count != 0, \
     "Function '%s' passed {} for argument %i.", fun, index);
 
+#define HISS_ASSERT_MIN_STRLEN(fun, args, index, len) \
+  HISS_ASSERT(args, strlen(args->cells[index]->str) >= len, \
+    "Function '%s' expected string of minimum length %d for argument %i.", fun, len, index);
+
 static hiss_val* hiss_val_call(hiss_env* e, hiss_val* f, hiss_val* a);
 static const char* hiss_type_name(int t);
 
@@ -33,6 +37,7 @@ hiss_env* hiss_env_copy(hiss_env* e){
     hiss_env* n = (hiss_env*) malloc(sizeof(hiss_env));
     n->par = e->par;
     n->vals = hiss_table_copy(e->vals);
+    n->types = hiss_type_copy(e->types);
     return n;
 }
 
@@ -174,7 +179,6 @@ hiss_val* hiss_val_pop(hiss_val* val, unsigned int i){
 
 hiss_val* hiss_val_take(hiss_val* val, unsigned int i){
   hiss_val* x = hiss_val_pop(val, i);
-  hiss_val_del(val);
   return x;
 }
 
@@ -218,23 +222,44 @@ static hiss_val* builtin_op(hiss_env*e, hiss_val* a, const char* op){
 
 static hiss_val* builtin_head(hiss_env* e, hiss_val* a){    
   hiss_val* val = NULL;
+  char str[1];
   HISS_ASSERT_NUM("head", a, 1);
-  HISS_ASSERT_TYPE("head", a, 0, HISS_QEXPR);
-  HISS_ASSERT_NOT_EMPTY("head", a, 0);
+  if (a->cells[0]->type == HISS_QEXPR) {
+    HISS_ASSERT_NOT_EMPTY("head", a, 0);
 
-  val = hiss_val_take(a, 0);
-  while(val->count > 1) hiss_val_del(hiss_val_pop(val, 1));
+    val = hiss_val_take(a, 0);
+    while(val->count > 1) hiss_val_pop(val, 1);
+  } else if (a->cells[0]->type == HISS_STR) {
+    HISS_ASSERT_MIN_STRLEN("head", a, 0, 1);
+
+    strncpy(str, a->cells[0]->str, 1);
+    val = hiss_val_str(str);
+  } else {
+    HISS_ASSERT(a, HISS_FALSE, "head expects collection(string/list), but got %s.\n", hiss_type_name(a->cells[0]->type));
+  }
   return val;
 }
 
 static hiss_val* builtin_tail(hiss_env* e, hiss_val* a){
   hiss_val* val = NULL;
+  char* str;
+  unsigned long len;
   HISS_ASSERT_NUM("tail", a, 1);
-  HISS_ASSERT_TYPE("tail", a, 0, HISS_QEXPR);
-  HISS_ASSERT_NOT_EMPTY("tail", a, 0);
 
-  val = hiss_val_take(a, 0);  
-  hiss_val_del(hiss_val_pop(val, 0));
+  if (a->cells[0]->type == HISS_QEXPR) {
+    HISS_ASSERT_NOT_EMPTY("tail", a, 0);
+
+    val = hiss_val_take(a, 0);  
+    hiss_val_pop(val, 0);
+  } else if (a->cells[0]->type == HISS_STR) {
+    HISS_ASSERT_MIN_STRLEN("head", a, 0, 1);
+
+    len = strlen(a->cells[0]->str) - 1;
+    str = malloc(sizeof(char) * len);
+    strncpy(str, &(a->cells[0]->str[1]), len);
+
+    val = hiss_val_str(str);
+  }
   return val;
 }
 
@@ -253,9 +278,19 @@ static hiss_val* builtin_eval(hiss_env* e, hiss_val* a){
   return hiss_val_eval(e, x);
 }
 
+static hiss_val* hiss_val_append(hiss_val* x, hiss_val* y) {
+  char* str = malloc(sizeof(char) * (strlen(x->str) + strlen(y->str)));
+  strcat(str, x->str);
+  strcat(str, y->str);
+  return hiss_val_str(str);
+}
+
 static hiss_val* hiss_val_join(hiss_env* e, hiss_val* x, hiss_val* y) {
-  while (y->count)
-    x = hiss_val_add(x, hiss_val_pop(y, 0));
+  if (x->type == HISS_QEXPR)
+    while (y->count)
+      x = hiss_val_add(x, hiss_val_pop(y, 0));
+  else if (x->type == HISS_STR)
+    x = hiss_val_append(x, y);
 
   hiss_val_del(y);  
   return x;
@@ -265,8 +300,11 @@ static hiss_val* builtin_join(hiss_env*e, hiss_val* a) {
   unsigned int i; 
   hiss_val* x;
     
-  for (i = 0; i < a->count; i++)
-    HISS_ASSERT_TYPE("join", a, 0, HISS_QEXPR);
+  for (i = 0; i < a->count; i++) {
+    HISS_ASSERT(a, (a->cells[i]->type == HISS_QEXPR || a->cells[i]->type == HISS_STR),
+      "Cannot join non-collection. Got %s, Expected Q-Expression or String.",
+      hiss_type_name(a->cells[i]->type));
+  }
 
   x = hiss_val_pop(a, 0);
 
@@ -393,24 +431,28 @@ static hiss_val* builtin_if(hiss_env* e, hiss_val* a){
     hiss_val* x;
 
     if(a->count == 3){
-        HISS_ASSERT_TYPE("if", a, 0, HISS_NUM);
+        HISS_ASSERT_TYPE("if", a, 0, HISS_BOOL);
         HISS_ASSERT_TYPE("if", a, 1, HISS_QEXPR);
         HISS_ASSERT_TYPE("if", a, 2, HISS_QEXPR);
     } 
-    else if(a->count == 1){
+    else if(a->count == 2){
         HISS_ASSERT_TYPE("if", a, 0, HISS_BOOL);
+        HISS_ASSERT_TYPE("if", a, 2, HISS_QEXPR);
     }
     else{
-        HISS_ASSERT(a, HISS_FALSE, "'if' takes either one argument(a boolean) or three(a comparison), but got %i.", a->count);
+        HISS_ASSERT(a, HISS_FALSE, "'if' takes either two arguments(if) or three(if/else), but got %i.", a->count);
     }
   
     a->cells[1]->type = HISS_SEXPR;
-    a->cells[2]->type = HISS_SEXPR;
   
-    if(a->cells[0]->count)
-        x = hiss_val_eval(e, hiss_val_pop(a, 1));
-    else
-        x = hiss_val_eval(e, hiss_val_pop(a, 2));
+    if (a->cells[0]->boolean) {
+      x = hiss_val_eval(e, hiss_val_pop(a, 1));
+    } else if (a->count == 3) {
+      a->cells[2]->type = HISS_SEXPR;
+      x = hiss_val_eval(e, hiss_val_pop(a, 2));
+    } else {
+      x = hiss_val_qexpr();
+    }
   
     hiss_val_del(a);
     return x;
@@ -418,7 +460,11 @@ static hiss_val* builtin_if(hiss_env* e, hiss_val* a){
 
 hiss_val* hiss_val_copy(const hiss_val* val){
   unsigned int i;
-  hiss_val* c = (hiss_val*) malloc(sizeof(hiss_val));
+  hiss_val* c;
+  
+  if (val == NULL) return NULL;
+
+  c= (hiss_val*) malloc(sizeof(hiss_val));
   c->type = val->type;
   
   switch (val->type) {
@@ -500,11 +546,14 @@ void hiss_env_type_put(hiss_env* e, const char* k, hiss_val* v){
 }
 
 hiss_val* hiss_val_eval(hiss_env* e, hiss_val* v){
+  //hiss_val_print(v);
+  //printf(" ");
   if (v->type == HISS_SYM) {
     hiss_val* x = (hiss_val*) hiss_env_get(e, v);
-    hiss_val_del(v);
+    //hiss_val_println(x);
     return x;
   }
+  //(puts("");
   
   if(v->type == HISS_SEXPR) return hiss_val_eval_sexpr(e, v);
   return v;
@@ -529,12 +578,10 @@ hiss_val* hiss_val_eval_sexpr(hiss_env* e, hiss_val* v){
     err = hiss_err("S-Expression starts with incorrect type. Got %s, expected %s.",
                    hiss_type_name(f->type), hiss_type_name(HISS_FUN));
     hiss_val_del(v); 
-    hiss_val_del(f);
     return err;
   }
 
   result = hiss_val_call(e, f, v);
-  //hiss_val_del(f);
   return result;
 }
 
@@ -585,8 +632,8 @@ static hiss_val* builtin_lambda(hiss_env* e, hiss_val* a){
 
 static hiss_val* builtin_var(hiss_env* e, hiss_val* a, const char* fun){
     unsigned int i;
-    int def = strcmp(fun, "def");
-    int equals = strcmp(fun, "=");
+    int def = strcmp(fun, "def") == 0;
+    int equals = strcmp(fun, "=") == 0;
     hiss_val* syms, *check;
     syms = check = NULL;
 
@@ -699,7 +746,6 @@ static hiss_val* builtin_const(hiss_env* e, hiss_val* a){
           return hiss_err("Type %s expects %i arguments, got %i", a->cells[0]->sym, expected, actual);
 
     formals = hiss_val_pop(v, 0);
-    hiss_val_del(v);
   
      //And now?
   }
@@ -747,9 +793,41 @@ static hiss_val* builtin_print(hiss_env* e, hiss_val* a){
 
     putchar('\n');
 
-    hiss_val_del(a);
+    return hiss_val_bool(HISS_TRUE);
+}
+
+static hiss_val* builtin_show(hiss_env* e, hiss_val* a){
+    unsigned int i;
+
+    for (i = 0; i < a->count; i++) HISS_ASSERT_TYPE("show", a, i, HISS_STR);
+
+    for(i = 0; i < a->count; i++) printf("%s ", a->cells[i]->str);
+
+    putchar('\n');
 
     return hiss_val_bool(HISS_TRUE);
+}
+
+static hiss_val* builtin_read(hiss_env* e, hiss_val* a) {
+  hiss_val* val;
+  mpc_result_t r;
+  char* err_msg;
+
+  HISS_ASSERT_NUM("read", a, 1);
+  HISS_ASSERT_TYPE("read", a, 0, HISS_STR);
+
+  if(mpc_parse("input", a->cells[0]->str, hiss, &r)){
+      val = hiss_val_read(r.output);
+      val->type = HISS_QEXPR;
+      mpc_ast_delete(r.output);
+  } else {
+      err_msg = mpc_err_string(r.error);
+      mpc_err_delete(r.error);
+
+      val = hiss_err("Could not load library: %s", err_msg);
+  }
+
+  return val;
 }
 
 static hiss_val* builtin_error(hiss_env* e, hiss_val* a){
@@ -765,22 +843,35 @@ static hiss_val* builtin_error(hiss_env* e, hiss_val* a){
 }
 
 static char* handle_file(char* name) {
-  char* new = str_replace(name, ".", "../");
-  unsigned long len = strlen(new);
+  unsigned long len = strlen(name);
+  char* new = NULL;
+
+  if (len > 4 && strcmp(name + len - 4, ".his") == 0) {
+    new = malloc(sizeof(char*) * (len - 3));
+    memcpy(new, name, len-4);
+    new[len-3] = '\0';
+  } else {
+    new = malloc(sizeof(char*) * (len + 1));
+    memcpy(new, name, len);
+    new[len] = '\0';
+  }
+
+  len = strlen(new);
+
   if (new[len-1] == '/') {
     char* tmp = malloc(sizeof(char*) * (len + 10));
     strcat(tmp, new);
     strcat(tmp, "module.his");
+    free(new);
     return tmp;
   }
 
-  if (len < 4 || strcmp(new + len - 4, ".his") != 0) {
-    char* tmp = malloc(sizeof(char*) * (len + 4));
-    strcat(tmp, new);
-    strcat(tmp, ".his");
-    return tmp;
-  }
-  return new;
+  char* tmp = malloc(sizeof(char*) * (len + 4));
+  strcat(tmp, new);
+  strcat(tmp, ".his");
+  free(new);
+
+  return tmp;
 }
 
 hiss_val* builtin_load(hiss_env* e, hiss_val* a){
@@ -815,9 +906,7 @@ hiss_val* builtin_load(hiss_env* e, hiss_val* a){
         err_msg = mpc_err_string(r.error);
         mpc_err_delete(r.error);
 
-        x = hiss_err("Could not load library %s", err_msg);
-
-        //free(err_msg);
+        x = hiss_err("Could not load library: %s", err_msg);
 
         hiss_val_del(a);
 
@@ -858,6 +947,8 @@ void hiss_env_add_builtins(hiss_env* e){
   hiss_env_add_builtin(e, "shell", builtin_shell);
   hiss_env_add_builtin(e, "print", builtin_print);
   hiss_env_add_builtin(e, "error", builtin_error);
+  hiss_env_add_builtin(e, "show", builtin_show);
+  hiss_env_add_builtin(e, "read", builtin_read);
 
   hiss_env_add_builtin(e, "+", builtin_add);
   hiss_env_add_builtin(e, "-", builtin_sub);
@@ -893,8 +984,6 @@ static hiss_val* hiss_val_call(hiss_env* e, hiss_val* f, hiss_val* a){
     while(a->count){
         sym = hiss_val_pop(f->formals, 0);
 
-        val = hiss_val_pop(a, 0);
-
         if (strcmp(sym->sym, "&") == 0) {
             if (f->formals->count != 1) {
                 hiss_val_del(a);
@@ -903,10 +992,9 @@ static hiss_val* hiss_val_call(hiss_env* e, hiss_val* f, hiss_val* a){
 
             nsym = hiss_val_pop(f->formals, 0);
             hiss_env_put(f->env, nsym, builtin_list(e, a));
-            hiss_val_del(sym); 
-            hiss_val_del(nsym);
             break;
         }
+        val = hiss_val_pop(a, 0);
 
         if(expected == 0){
             hiss_val_del(a);
@@ -916,12 +1004,7 @@ static hiss_val* hiss_val_call(hiss_env* e, hiss_val* f, hiss_val* a){
 
 
         hiss_env_put(f->env, sym, val);
-
-        hiss_val_del(sym);
-        hiss_val_del(val);
     }
-
-    hiss_val_del(a);
 
     if(f->formals->count > 0 && strcmp(f->formals->cells[0]->sym, "&") == 0){
         if(f->formals->count != 2)
@@ -933,8 +1016,6 @@ static hiss_val* hiss_val_call(hiss_env* e, hiss_val* f, hiss_val* a){
         val = hiss_val_qexpr();
 
         hiss_env_put(f->env, sym, val);
-        hiss_val_del(sym); 
-        hiss_val_del(val);
     }
 
     if(f->formals->count == 0){

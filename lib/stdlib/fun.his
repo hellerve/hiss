@@ -1,12 +1,11 @@
-(def {fun}(
-    lambda {args body} 
+(def {fun}
+  (lambda {args body} 
         {def (head args) 
-            (lambda(tail args) body)}))
+            (lambda (tail args) body)}))
 
-(fun {curry f xs} {
-    eval(join(list f) xs)})
+(fun {curry f xs} {join(list f) xs})
 
-(fun {uncurry f & args} {f xs})
+(fun {uncurry f & args} {f args})
 
 (fun {let b} {
     ((lambda {_} b)())})

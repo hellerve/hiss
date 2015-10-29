@@ -1,3 +1,3 @@
-(load "fun")
-(load "logical")
-(load "util")
+(load "lib/stdlib/fun")
+(load "lib/stdlib/logical")
+(load "lib/stdlib/util")

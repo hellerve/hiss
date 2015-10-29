@@ -1,4 +1,4 @@
-(load ".stdlib")
+(load "lib/stdlib/")
 (type:pair {first second})
 
 (fun {make_pair h t}{
@@ -14,7 +14,7 @@
         {from c first}
         {error "Argument is not a pair"}})
 
-{fun {cdr c}{
+(fun {cdr c}{
     (if (pair? c))
         {from c second}
         {error "Argument is not a pair"}})

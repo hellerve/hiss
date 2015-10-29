@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "parser.h"
+#include "mpc.h"
 #include "../utilities/type_utils.h"
 
 #ifdef _WIN32
@@ -35,7 +35,7 @@ void add_history(char* unused){}
 
 #include "util.h"
 
-#define VERSION "Hiss version 0.0.2"
+#define VERSION "Hiss version 0.0.3"
 #define PROMPT "hiss> "
 #define USAGE "Usage: hiss [-hv]\n\tIf the program is called without arguments, "\
                "the REPL is started.\n\t-h triggers this help message.\n\t"\
@@ -81,27 +81,27 @@ static __inline void print_header(){
 #elif defined(_MSC_VER)
     printf(", compiled with icc %s\n", _MSC_VER);
 #endif
-    printf("For exiting, press Ctrl-C or type exit/quit\n\n");
+    printf("For exiting, press Ctrl-C or type :q/:quit\n\n");
 }
 
 int repl(const char* f){
-    vpc_result r;
+    mpc_result_t r;
     hiss_val* x = NULL;
     hiss_val* args = NULL;
     hiss_env* e = NULL;
-    number = vpc_new("number");
-    symbol = vpc_new("symbol");
-    type = vpc_new("type");
-    string = vpc_new("string");
-    comment = vpc_new("comment");
-    s_expression  = vpc_new("sexpr");
-    q_expression  = vpc_new("qexpr");
-    expression   = vpc_new("expr");
-    hiss  = vpc_new("hiss");
+    number = mpc_new("number");
+    symbol = mpc_new("symbol");
+    type = mpc_new("type");
+    string = mpc_new("string");
+    comment = mpc_new("comment");
+    s_expression  = mpc_new("sexpr");
+    q_expression  = mpc_new("qexpr");
+    expression   = mpc_new("expr");
+    hiss  = mpc_new("hiss");
 
-    vpca_lang(VPCA_LANG_DEFAULT,
+    mpca_lang(MPCA_LANG_DEFAULT,
         "number        : /-?[0-9]+/;                              \
-         symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/;        \
+         symbol        : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!\\|\\:?&]+/;    \
          type          : /type:<symbol>/;                         \
          string        : /\"(\\\\.|[^\"])*\"/;                    \
          comment       : /#[^\\r\\n]*/;                           \
@@ -123,26 +123,27 @@ int repl(const char* f){
         if(x->type == HISS_ERR) hiss_val_println(x);
         hiss_val_del(x);
     }else{
+        print_header();
         while(1){
             char* input = readline(PROMPT);
         
             add_history(input);
 
-            if(strcmp(input, "exit") == 0 || strcmp(input, "quit") == 0){
+            if(strcmp(input, ":q") == 0 || strcmp(input, ":quit") == 0){
                 free(input);
                 break;
             }
 
-            if(vpc_parse("stdin", input, hiss, &r)){
-                x = hiss_val_eval(e, hiss_val_read((vpc_ast*)r.output));
+            if(mpc_parse("stdin", input, hiss, &r)){
+                x = hiss_val_eval(e, hiss_val_read((mpc_ast_t*)r.output));
                 hiss_env_add_type(e, x);
                 hiss_val_println(x);
                 hiss_val_del(x);
             
-                vpc_ast_delete((vpc_ast*)r.output);
+                mpc_ast_delete((mpc_ast_t*)r.output);
             } else {
-                vpc_err_print(r.error);
-                vpc_err_delete(r.error);
+                mpc_err_print(r.error);
+                mpc_err_delete(r.error);
             }
 
             free(input);
@@ -151,7 +152,7 @@ int repl(const char* f){
 
     hiss_env_del(e);
     
-    vpc_cleanup(6, number, symbol, string, comment, s_expression, 
+    mpc_cleanup(8, number, symbol, string, comment, s_expression, 
                 q_expression, expression, hiss);
 
     return 0;
@@ -159,10 +160,7 @@ int repl(const char* f){
 
 int main(int argc, char**argv){
     char* f = NULL;
-    if(argc > 1)
-        f = parse_arguments(argc, argv);
+    if(argc > 1) f = parse_arguments(argc, argv);
 
-    print_header();
-    
     return repl(f);
 }

@@ -10,8 +10,6 @@ hiss_val* hiss_val_num(long n){
 hiss_val* hiss_val_bool(unsigned short boolean){
     hiss_val* val = (hiss_val*) malloc(sizeof(hiss_val));
     val->type = HISS_BOOL;
-    if(boolean != 0)
-        val->boolean = HISS_TRUE;
     val->boolean = boolean;
     return val;
 }

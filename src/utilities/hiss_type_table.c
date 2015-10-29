@@ -43,14 +43,11 @@ hiss_type_table* hiss_type_copy(hiss_type_table* hasht){
 void hiss_type_delete(hiss_type_table* hasht){
     unsigned int i;
     hiss_type_entry* e = NULL;
-    hiss_type_entry* next = NULL;
 
-    if(!hasht) return;
+    if(hasht == NULL) return;
 
     for(i = 0; i < hasht->size; i++){
-        for(e = hasht->table[i]; e != 0; e = next){
-            next = e->next;
-
+        for(e = hasht->table[i]; e != 0; e = e->next){
             free((char*)e->key);
             free((struct hiss_val*)e->value);
             free(e);
@@ -115,7 +112,7 @@ const struct hiss_val* hiss_type_get(hiss_type_table* hasht, const char* key){
     for(e = hasht->table[hiss_hash(key) % hasht->size]; e; e = e->next)
         if(e->key == key) return e->value;
 
-    return NULL;
+    return hiss_err("Not found: %s", key);
 }
 
 void hiss_type_remove(hiss_type_table* hasht, const char* key){

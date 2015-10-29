@@ -1,10 +1,10 @@
-(load "fun")
 (def {nil} {})
 (def {ok} ())
 
-(fun {fst l} { eval (head l) })
-(fun {snd l} { eval (head (tail l)) })
-(fun {trd l} { eval (head (tail (tail l))) })
+(fun {fst l} {head l})
+(fun {snd l} {head (tail l)})
+(fun {trd l} {head (tail (tail l))})
+(fun {nth n l} {if (< n 1) {if (!= l {}) {head l} {{}}} {nth (- n 1) (tail l)}})
 
 (fun {zero?} {== curry 0})
 (fun {positive?} {> curry 0})
@@ -37,7 +37,7 @@
             {true}
             {(in (tail l) e)}}})
 
-(fun {last l} { {nth (- (len l) 1) l})
+(fun {last l} {nth (- (len l) 1) l})
 
 (fun {select & cs} {
     if (== cs {})
@@ -68,5 +68,11 @@
 
 (fun {sum l} {foldl + 0 l})
 (fun {product l} {foldl * 1 l})
-(fun {any? pre & l} {(or(map pre l))}
-(fun {all? pre & l} {(and(map pre l))}
+(fun {any? pre & l} {or(map pre l)})
+(fun {all? pre & l} {and(map pre l)})
+(fun {exec str} {eval (read str)})
+
+(fun {range n}
+  {do
+  (fun {x i li} {if (== n i) {li} {x (+ i 1) (join li (list i))}})
+  (x 0 {})})
